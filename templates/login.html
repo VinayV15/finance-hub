@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Finance Hub</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+  <form class="login-card" method="post" autocomplete="off">
+    <h1>Finance Hub</h1>
+    <p class="muted">Enter your PIN</p>
+    <input name="pin" type="password" inputmode="numeric" pattern="[0-9]*" autofocus required aria-label="PIN">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <button type="submit" class="btn primary">Unlock</button>
+  </form>
+</body>
+</html>

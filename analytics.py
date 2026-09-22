@@ -1,0 +1,189 @@
+"""Numbers for the dashboards. Everything here reads classified transactions (see classify.py),
+so transfers between your own accounts never show up as spending or income."""
+import re
+import statistics
+from collections import defaultdict
+from datetime import date, timedelta
+
+import db
+
+PERIODS = {
+    "day": "t.date",
+    "week": "date(t.date, 'weekday 0', '-6 days')",  # week starting Monday
+    "month": "substr(t.date, 1, 7)",
+    "quarter": "substr(t.date,1,4) || '-Q' || ((cast(substr(t.date,6,2) as integer) + 2) / 3)",
+    "year": "substr(t.date, 1, 4)",
+}
+
+
+def _where(start=None, end=None, accounts=None, extra=""):
+    sql, args = ["1=1"], []
+    if start:
+        sql.append("t.date >= ?"); args.append(start)
+    if end:
+        sql.append("t.date <= ?"); args.append(end)
+    if accounts:
+        sql.append(f"t.account_id IN ({','.join('?' * len(accounts))})"); args.extend(accounts)
+    if extra:
+        sql.append(extra)
+    return " AND ".join(sql), args
+
+
+# Money into an investment account = invested. Count it once: the bank side if we have it, otherwise
+# the investment-account side when its bank half is missing.
+_INVESTED = """CASE
+    WHEN k.kind='invest_contribution' AND a.type!='investment' AND t.amount>0 THEN t.amount
+    WHEN k.kind='invest_contribution' AND a.type='investment' AND t.amount<0 AND k.pair_id IS NULL THEN -t.amount
+    WHEN k.kind='invest_withdrawal' AND a.type!='investment' AND t.amount<0 THEN t.amount
+    WHEN k.kind='invest_withdrawal' AND a.type='investment' AND t.amount>0 AND k.pair_id IS NULL THEN -t.amount
+    ELSE 0 END"""
+
+_SELECT_TOTALS = f"""
+    ROUND(SUM(CASE WHEN k.flow='income' THEN -t.amount ELSE 0 END), 2) AS income,
+    ROUND(SUM(CASE WHEN k.flow='spend' THEN t.amount ELSE 0 END), 2) AS spend_gross,
+    ROUND(SUM(CASE WHEN k.flow='refund' THEN -t.amount ELSE 0 END), 2) AS refunds,
+    ROUND(SUM({_INVESTED}), 2) AS invested,
+    ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS growth"""
+
+_FROM = """FROM transactions t JOIN txn_class k USING(txn_id) LEFT JOIN accounts a ON a.account_id=t.account_id"""
+
+
+def _finish(row):
+    r = dict(row)
+    r["spend"] = round((r["spend_gross"] or 0) - (r["refunds"] or 0), 2)
+    r["saved"] = round((r["income"] or 0) - r["spend"], 2)
+    r["savings_rate"] = round(r["saved"] / r["income"], 4) if r["income"] else None
+    return r
+
+
+def cashflow(start=None, end=None, group="month", accounts=None):
+    where, args = _where(start, end, accounts)
+    with db.conn() as c:
+        rows = c.execute(f"SELECT {PERIODS[group]} AS period, {_SELECT_TOTALS} {_FROM} WHERE {where} "
+                         f"GROUP BY period ORDER BY period", args).fetchall()
+        total = c.execute(f"SELECT {_SELECT_TOTALS} {_FROM} WHERE {where}", args).fetchone()
+    return {"periods": [_finish(r) for r in rows], "total": _finish(total)}
+
+
+def by_category(start=None, end=None, accounts=None, flow="spend"):
+    """Net spend per category (refunds subtract), or income per category."""
+    flows = ("spend", "refund") if flow == "spend" else ("income",)
+    where, args = _where(start, end, accounts, f"k.flow IN ({','.join('?' * len(flows))})")
+    args += list(flows)
+    sign = "" if flow == "spend" else "-"
+    with db.conn() as c:
+        rows = c.execute(f"""SELECT k.category, ROUND(SUM({sign}t.amount), 2) AS amount, COUNT(*) AS n
+            {_FROM} WHERE {where} GROUP BY k.category HAVING amount != 0 ORDER BY amount DESC""", args).fetchall()
+    return [dict(r) for r in rows]
+
+
+def by_account(start=None, end=None):
+    """Per account: what came in, what was spent from it, and what moved to/from your other accounts."""
+    where, args = _where(start, end)
+    with db.conn() as c:
+        rows = c.execute(f"""SELECT a.account_id, a.institution, a.name, a.type, {_SELECT_TOTALS},
+            ROUND(SUM(CASE WHEN k.flow='transfer' AND t.amount<0 THEN -t.amount ELSE 0 END), 2) AS transfers_in,
+            ROUND(SUM(CASE WHEN k.flow='transfer' AND t.amount>0 THEN t.amount ELSE 0 END), 2) AS transfers_out,
+            COUNT(*) AS n
+            {_FROM} WHERE {where} GROUP BY a.account_id ORDER BY a.institution, a.name""", args).fetchall()
+    return [_finish(r) for r in rows]
+
+
+def top_merchants(start=None, end=None, accounts=None, limit=15):
+    where, args = _where(start, end, accounts, "k.flow IN ('spend','refund')")
+    with db.conn() as c:
+        rows = c.execute(f"""SELECT t.name, ROUND(SUM(t.amount),2) AS amount, COUNT(*) AS n
+            {_FROM} WHERE {where} GROUP BY lower(t.name) HAVING amount > 0 ORDER BY amount DESC LIMIT ?""",
+                         args + [limit]).fetchall()
+    return [dict(r) for r in rows]
+
+
+def data_coverage():
+    """First/last transaction date per account, so the UI can warn when a range has gaps."""
+    with db.conn() as c:
+        rows = c.execute("""SELECT a.account_id, a.institution, a.name, MIN(t.date) AS first, MAX(t.date) AS last,
+            COUNT(t.txn_id) AS n FROM accounts a LEFT JOIN transactions t ON t.account_id=a.account_id
+            GROUP BY a.account_id ORDER BY first""").fetchall()
+    return [dict(r) for r in rows]
+
+
+# ---------- income ----------
+
+def _employer_key(name):
+    """'ACME PAYROLL 0YAVDY… JANE' / 'Acme - Payroll Deposit' -> 'ACME';
+    'GLOBEX CORP, L Payroll 010325' -> 'GLOBEX CORP'. Leading words up to the first payroll-ish word."""
+    stop = {"PAYROLL", "DEPOSIT", "DIRECT", "DEP", "ACH", "PAYMENTS", "PMT", "-"}
+    out = []
+    for w in (name or "").upper().split(",")[0].split():
+        if w in stop or any(ch.isdigit() for ch in w) or w in ("INSTANT", "FROM") and not out:
+            if out:
+                break
+            continue
+        out.append(w)
+        if len(out) == 4:
+            break
+    return " ".join(out) or "Unknown"
+
+
+def _frequency(gaps):
+    if not gaps:
+        return None, None
+    g = statistics.median(gaps)
+    for label, days, per_year in (("weekly", 7, 52), ("biweekly", 14, 26), ("semimonthly", 15.2, 24),
+                                  ("monthly", 30.4, 12)):
+        if abs(g - days) <= 2.5:
+            return label, per_year
+    return f"every ~{round(g)} days", round(365 / g, 1)
+
+
+def detected_income():
+    """Group paycheck deposits by employer. A paycheck split across accounts (same day) counts once."""
+    with db.conn() as c:
+        rows = [dict(r) for r in c.execute(f"""SELECT t.date, t.name, -t.amount AS amount, a.institution
+            {_FROM} WHERE k.flow='income' AND k.kind='paycheck' ORDER BY t.date""")]
+    by_emp = defaultdict(lambda: defaultdict(float))
+    split = defaultdict(set)
+    for r in rows:
+        k = _employer_key(r["name"])
+        by_emp[k][r["date"]] += r["amount"]
+        split[k].add(r["institution"])
+    today = date.today()
+    out = []
+    for emp, days in by_emp.items():
+        dates = sorted(days)
+        amounts = [days[d] for d in dates]
+        gaps = [(date.fromisoformat(b) - date.fromisoformat(a)).days for a, b in zip(dates, dates[1:])]
+        freq, per_year = _frequency(gaps[-8:])
+        recent = amounts[-6:]
+        last_date = date.fromisoformat(dates[-1])
+        out.append({
+            "employer": emp,
+            "deposits": len(dates),
+            "first": dates[0], "last": dates[-1],
+            "active": (today - last_date).days <= 45,
+            "frequency": freq,
+            "typical_paycheck": round(statistics.median(recent), 2),
+            "annualized": round(statistics.median(recent) * per_year, 2) if per_year else None,
+            "last_12_months": round(sum(v for d, v in days.items() if date.fromisoformat(d) >= today - timedelta(days=365)), 2),
+            "accounts": sorted(i for i in split[emp] if i),
+            "history": [{"date": d, "amount": round(days[d], 2)} for d in dates],
+        })
+    out.sort(key=lambda e: e["last"], reverse=True)
+    return out
+
+
+def income_check():
+    """Compare the income you entered against what's actually arriving."""
+    cfg = db.get_json("income", {}) or {}
+    detected = [e for e in detected_income() if e["active"]]
+    detected_annual = sum(e["annualized"] or 0 for e in detected)
+    entered = cfg.get("annual_net")
+    diff = round(detected_annual - entered, 2) if entered and detected_annual else None
+    return {
+        "settings": cfg,
+        "detected": detected_income(),
+        "detected_annual": round(detected_annual, 2),
+        "difference": diff,
+        "warning": (f"Paychecks are running {'above' if diff > 0 else 'below'} what you entered by "
+                    f"${abs(diff):,.0f}/yr." if diff is not None and abs(diff) > 0.05 * entered else None),
+    }
