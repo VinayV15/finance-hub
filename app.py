@@ -347,16 +347,30 @@ def api_rule_delete(rule_id):
 def api_income():
     if request.method == "PUT":
         b = request.get_json() or {}
+
+        def num(key, required=False):
+            v = str(b.get(key, "")).replace(",", "").replace("$", "").replace("%", "").strip()
+            if not v:
+                if required:
+                    raise ValueError(key)
+                return None
+            return float(v)
         try:
-            annual = float(str(b.get("annual_net", "")).replace(",", "").replace("$", ""))
+            cfg = {
+                "gross_annual": num("gross_annual", True),
+                "net_per_paycheck": num("net_per_paycheck", True),
+                "retirement_pct": num("retirement_pct") or 0,
+                "employer_match_pct": num("employer_match_pct") or 0,
+            }
         except ValueError:
-            return jsonify(error="Annual after-tax income must be a number."), 400
-        db.set_json("income", {
-            "annual_net": annual,
-            "pay_frequency": b.get("pay_frequency") or "biweekly",
-            "employer": (b.get("employer") or "").strip(),
-            "notes": (b.get("notes") or "").strip(),
-        })
+            return jsonify(error="Salary and take-home per paycheck are required, and every field must be a number."), 400
+        freq = b.get("pay_frequency") or "biweekly"
+        if freq not in analytics.PERIODS_PER_YEAR:
+            return jsonify(error="bad pay frequency"), 400
+        cfg.update(pay_frequency=freq, employer=(b.get("employer") or "").strip(),
+                   match_notes=(b.get("match_notes") or "").strip(), notes=(b.get("notes") or "").strip())
+        cfg["annual_net"] = round(cfg["net_per_paycheck"] * analytics.PERIODS_PER_YEAR[freq], 2)
+        db.set_json("income", cfg)
     return jsonify(analytics.income_check())
 
 

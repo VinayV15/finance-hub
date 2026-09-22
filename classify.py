@@ -4,7 +4,7 @@ counted as spending or income.
 Each transaction gets a *flow*:
   spend     money that left you for good (purchases, bills, mortgage, money sent to people)
   income    money that arrived from outside (paychecks, interest, tax refunds, money from people)
-  refund    money back from a merchant — reduces spending in its category
+  refund    money back (merchant refunds, friends paying you back, work reimbursements) — reduces spending
   transfer  money moving between your own accounts (card payments, Robinhood contributions, Venmo funding)
   growth    dividends/interest earned inside an investment account (not spendable income)
 
@@ -127,7 +127,7 @@ def _auto(t, own):
             return "transfer", "venmo_cashout" if out else "venmo_topup", "Transfer", 0, "Venmo ↔ bank"
         if out:
             return "spend", "p2p" if vt == "payment" else "purchase", "Sent to people" if vt == "payment" else "Shopping", 0, "Venmo"
-        return "income", "p2p", "Received from people", 0, "Venmo payment received"
+        return "refund", "p2p", "Paybacks from people", 0, "Venmo payment received — counted as a payback"
 
     # Card payments / transfers to my own accounts
     target = _mentions_own(t, own) if primary in ("TRANSFER_IN", "TRANSFER_OUT", "LOAN_PAYMENTS") else None
@@ -164,7 +164,7 @@ def _auto(t, own):
     if P2P_RE.search(name):
         if out:
             return "spend", "p2p", "Sent to people", 0, "Zelle / Apple Cash"
-        return "income", "p2p", "Received from people", 0, "Zelle / Apple Cash"
+        return "refund", "p2p", "Paybacks from people", 0, "Zelle / Apple Cash received — counted as a payback"
 
     # Cash
     if out and ATM_OUT_RE.search(name):
@@ -258,6 +258,34 @@ def _pair_venmo_funding(txns, cls):
                                     pair_id=best[1]["txn_id"], reason="paid for a Venmo payment (counted in Venmo)")
 
 
+def _check_pay_schedule(txns, cls):
+    """Paychecks land every 1-2 weeks on a fixed schedule. A payroll deposit with no other paycheck
+    7 or 14 days before/after it is off-schedule (reimbursement, bonus...). Tiny ones are bank test deposits."""
+    from analytics import _employer_key  # local import: analytics imports db only
+    pay = [t for t in txns if cls[t["txn_id"]]["kind"] == "paycheck" and not cls[t["txn_id"]]["locked"]]
+    for t in pay:
+        if -t["amount"] < 5:
+            cls[t["txn_id"]].update(flow="transfer", kind="test_deposit", category="Transfer", review=0,
+                                    reason="tiny test deposit from payroll setup — not counted")
+    dates = defaultdict(set)
+    for t in pay:
+        if cls[t["txn_id"]]["kind"] == "paycheck":
+            dates[_employer_key(t["name"])].add(_d(t["date"]))
+    for t in pay:
+        c = cls[t["txn_id"]]
+        if c["kind"] != "paycheck":
+            continue
+        own = dates[_employer_key(t["name"])]
+        d = _d(t["date"])
+        if len(own) < 3:
+            continue  # not enough history to know the schedule
+        on_schedule = any(abs((d - o).days - gap) <= 2 or abs((o - d).days - gap) <= 2
+                          for o in own if o != d for gap in (7, 14))
+        if not on_schedule:
+            c.update(flow="refund", kind="reimbursement", category="Reimbursements", review=1,
+                     reason="off-schedule deposit from your employer — reimbursement or bonus?")
+
+
 def run():
     txns, overrides, rules, institutions = _load()
     own = _own_patterns(institutions)
@@ -279,6 +307,7 @@ def run():
                                 reason=reason, locked=locked)
     _pair_transfers(txns, cls)
     _pair_venmo_funding(txns, cls)
+    _check_pay_schedule(txns, cls)
     with db.conn() as c:
         c.execute("DELETE FROM txn_class")
         c.executemany(

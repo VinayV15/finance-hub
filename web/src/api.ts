@@ -46,6 +46,8 @@ export interface Totals {
   savings_rate: number | null
   invested: number
   growth: number
+  paychecks: number
+  retirement?: number
 }
 
 export interface Summary {
@@ -92,11 +94,16 @@ export interface Employer {
   frequency: string | null; typical_paycheck: number; annualized: number | null; last_12_months: number
   accounts: string[]; history: { date: string; amount: number }[]
 }
+export interface IncomeSettings {
+  gross_annual?: number; net_per_paycheck?: number; retirement_pct?: number; employer_match_pct?: number
+  pay_frequency?: string; employer?: string; match_notes?: string; notes?: string; annual_net?: number
+}
+type PayLines = { gross: number; retirement: number; taxes_and_other: number; take_home: number; employer_match: number }
 export interface IncomeCheck {
-  settings: { annual_net?: number; pay_frequency?: string; employer?: string; notes?: string }
+  settings: IncomeSettings
+  breakdown: { periods_per_year: number; per_paycheck: PayLines; per_year: PayLines; effective_tax_rate: number | null } | null
+  ytd: { paychecks: number; take_home: number; expected_take_home?: number; gross?: number; retirement?: number; employer_match?: number }
   detected: Employer[]
-  detected_annual: number
-  difference: number | null
   warning: string | null
 }
 

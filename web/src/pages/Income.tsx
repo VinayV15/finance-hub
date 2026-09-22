@@ -1,74 +1,116 @@
 import { useEffect, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { put, type IncomeCheck } from '../api'
-import { money, moneyShort, niceDate } from '../format'
+import { money, moneyShort, niceDate, pct } from '../format'
 import { useFetch, useToast } from '../hooks'
 
 const FREQS = [
-  { v: 'weekly', label: 'Weekly', n: 52 },
-  { v: 'biweekly', label: 'Every 2 weeks', n: 26 },
-  { v: 'semimonthly', label: 'Twice a month', n: 24 },
-  { v: 'monthly', label: 'Monthly', n: 12 },
+  { v: 'weekly', label: 'Weekly' },
+  { v: 'biweekly', label: 'Every 2 weeks' },
+  { v: 'semimonthly', label: 'Twice a month' },
+  { v: 'monthly', label: 'Monthly' },
 ]
+
+const LINES = [
+  { key: 'gross', label: 'Gross pay', note: 'salary before anything comes out' },
+  { key: 'retirement', label: 'Your 401(k)', note: 'comes out before taxes', minus: true },
+  { key: 'taxes_and_other', label: 'Taxes & other deductions', note: 'federal, Social Security, Medicare, insurance…', minus: true },
+  { key: 'take_home', label: 'Take-home', note: 'what lands in your bank accounts', strong: true },
+] as const
 
 export function Income() {
   const toast = useToast()
   const { data, reload } = useFetch<IncomeCheck>('/api/income')
-  const [annual, setAnnual] = useState('')
-  const [freq, setFreq] = useState('biweekly')
-  const [employer, setEmployer] = useState('')
-  const [notes, setNotes] = useState('')
+  const [f, setF] = useState({ gross_annual: '', net_per_paycheck: '', retirement_pct: '', employer_match_pct: '', pay_frequency: 'biweekly', employer: '', match_notes: '', notes: '' })
   useEffect(() => {
     if (!data) return
     const s = data.settings
-    setAnnual(s.annual_net ? String(s.annual_net) : '')
-    setFreq(s.pay_frequency || data.detected.find((e) => e.active)?.frequency || 'biweekly')
-    setEmployer(s.employer || data.detected.find((e) => e.active)?.employer || '')
-    setNotes(s.notes || '')
+    const active = data.detected.find((e) => e.active)
+    setF({
+      gross_annual: s.gross_annual ? String(s.gross_annual) : '',
+      net_per_paycheck: s.net_per_paycheck ? String(s.net_per_paycheck) : active ? String(active.typical_paycheck) : '',
+      retirement_pct: s.retirement_pct != null ? String(s.retirement_pct) : '',
+      employer_match_pct: s.employer_match_pct != null ? String(s.employer_match_pct) : '',
+      pay_frequency: s.pay_frequency || 'biweekly',
+      employer: s.employer || active?.employer || '',
+      match_notes: s.match_notes || '',
+      notes: s.notes || '',
+    })
   }, [data])
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value })
 
   const save = async () => {
-    try { await put('/api/income', { annual_net: annual, pay_frequency: freq, employer, notes }); toast('Saved.'); reload() }
-    catch (e) { toast((e as Error).message, true) }
+    try { await put('/api/income', f); toast('Saved.'); reload() } catch (e) { toast((e as Error).message, true) }
   }
-  const per = FREQS.find((f) => f.v === freq)?.n || 26
-  const annualNum = parseFloat(annual.replace(/[$,]/g, '')) || 0
 
+  const b = data?.breakdown
+  const ytd = data?.ytd
   return (
     <>
       <div className="page-head"><h1>Income</h1></div>
-      <div className="card">
-        <h2>Your take-home pay</h2>
-        <p className="muted small" style={{ marginTop: -4 }}>After taxes and anything taken out of your paycheck (401k, insurance). Forecasts and budgets use this number; the app checks it against real deposits below.</p>
-        <div className="form-grid">
-          <label className="field">Take-home per year
-            <input className="input" inputMode="decimal" value={annual} onChange={(e) => setAnnual(e.target.value)} placeholder="e.g. 85000" />
-          </label>
-          <label className="field">Paid
-            <select className="input" value={freq} onChange={(e) => setFreq(e.target.value)}>
-              {FREQS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
-            </select>
-          </label>
-          <label className="field">Employer
-            <input className="input" value={employer} onChange={(e) => setEmployer(e.target.value)} />
-          </label>
-          <button className="btn primary" onClick={save}>Save</button>
-        </div>
-        {annualNum > 0 && <p className="small" style={{ marginBottom: 0 }}>= <b>{money(annualNum / per)}</b> per paycheck · <b>{money(annualNum / 12, { cents: false })}</b> per month</p>}
-        <label className="field" style={{ marginTop: 12 }}>Notes (bonuses, raises coming, etc.)
-          <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. annual bonus in March, raise in January" />
-        </label>
-      </div>
 
-      {data?.warning && <div className="alert section"><span>⚠ {data.warning}</span></div>}
+      {ytd && (
+        <div className="tiles">
+          <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Take-home this year</div>
+            <div className="value">{money(ytd.take_home)}</div><div className="sub">{ytd.paychecks} paychecks</div></div>
+          {ytd.gross != null && <div className="tile"><div className="label">Gross pay this year</div><div className="value">{money(ytd.gross, { cents: false })}</div><div className="sub">before 401(k) & taxes</div></div>}
+          {ytd.retirement != null && <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />401(k) this year</div>
+            <div className="value">{money((ytd.retirement || 0) + (ytd.employer_match || 0), { cents: false })}</div>
+            <div className="sub">{money(ytd.retirement, { cents: false })} you + {money(ytd.employer_match, { cents: false })} employer match (est.)</div></div>}
+        </div>
+      )}
+      {data?.warning && <div className="alert"><span>⚠ {data.warning}</span></div>}
+
+      <div className="grid two">
+        <div className="card">
+          <h2>Your pay</h2>
+          <div className="form-grid">
+            <label className="field">Salary per year (before taxes)<input className="input" inputMode="decimal" value={f.gross_annual} onChange={set('gross_annual')} placeholder="e.g. 75000" /></label>
+            <label className="field">Take-home per paycheck<input className="input" inputMode="decimal" value={f.net_per_paycheck} onChange={set('net_per_paycheck')} placeholder="e.g. 2200.00" /></label>
+            <label className="field">Paid<select className="input" value={f.pay_frequency} onChange={set('pay_frequency')}>{FREQS.map((x) => <option key={x.v} value={x.v}>{x.label}</option>)}</select></label>
+            <label className="field">Your 401(k) %<input className="input" inputMode="decimal" value={f.retirement_pct} onChange={set('retirement_pct')} placeholder="5" /></label>
+            <label className="field">Employer match %<input className="input" inputMode="decimal" value={f.employer_match_pct} onChange={set('employer_match_pct')} placeholder="4" /></label>
+            <label className="field">Employer<input className="input" value={f.employer} onChange={set('employer')} /></label>
+          </div>
+          <label className="field" style={{ marginTop: 12 }}>How the match works<input className="input" value={f.match_notes} onChange={set('match_notes')} placeholder="you 5% → they 4%" /></label>
+          <label className="field" style={{ marginTop: 12 }}>Notes (bonuses, raises…)<input className="input" value={f.notes} onChange={set('notes')} /></label>
+          <button className="btn primary" style={{ marginTop: 12 }} onClick={save}>Save</button>
+        </div>
+
+        <div className="card">
+          <h2>Where each paycheck goes</h2>
+          {!b ? <div className="empty">Enter your salary and take-home to see the breakdown.</div> : (
+            <>
+              <table className="data">
+                <thead><tr><th></th><th className="r">Per paycheck</th><th className="r">Per year</th></tr></thead>
+                <tbody>
+                  {LINES.map((l) => (
+                    <tr key={l.key}>
+                      <td>{'strong' in l ? <b>{l.label}</b> : l.label}<div className="muted small">{l.note}</div></td>
+                      <td className="r">{'minus' in l ? '−' : ''}{money(b.per_paycheck[l.key])}</td>
+                      <td className="r">{'minus' in l ? '−' : ''}{money(b.per_year[l.key], { cents: false })}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td>{data?.settings.employer || 'Employer'} 401(k) match<div className="muted small">added on top, never hits your bank</div></td>
+                    <td className="r">+{money(b.per_paycheck.employer_match)}</td>
+                    <td className="r">+{money(b.per_year.employer_match, { cents: false })}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="small muted" style={{ marginBottom: 0 }}>Taxes & deductions are {pct(b.effective_tax_rate)} of gross. Retirement saving: {money(b.per_year.retirement + b.per_year.employer_match, { cents: false })}/yr total.</p>
+            </>
+          )}
+        </div>
+      </div>
 
       <div className="card section">
         <h2>Paychecks the app found</h2>
-        <p className="muted small" style={{ marginTop: -4 }}>A paycheck split between Wells Fargo and Wealthfront on the same day counts as one.</p>
+        <p className="muted small" style={{ marginTop: -4 }}>A paycheck split between Wells Fargo and Wealthfront on the same day counts as one. Off-schedule deposits (reimbursements, bonuses) aren't counted here.</p>
         {!data ? <div className="empty">Loading…</div> : data.detected.length === 0 ? <div className="empty">No paychecks detected yet.</div> : (
           <div className="table-wrap">
             <table className="data">
-              <thead><tr><th>Employer</th><th>Status</th><th>How often</th><th className="r">Typical paycheck</th><th className="r">Per year (at that rate)</th><th className="r">Last 12 months</th><th>Lands in</th></tr></thead>
+              <thead><tr><th>Employer</th><th>Status</th><th>How often</th><th className="r">Typical paycheck</th><th className="r">Last 12 months</th><th>Lands in</th></tr></thead>
               <tbody>
                 {data.detected.map((e) => (
                   <tr key={e.employer}>
@@ -76,7 +118,6 @@ export function Income() {
                     <td>{e.active ? <span className="badge income">● Current</span> : <span className="badge">Past</span>}</td>
                     <td>{e.frequency || '—'}</td>
                     <td className="r">{money(e.typical_paycheck)}</td>
-                    <td className="r">{money(e.annualized, { cents: false })}</td>
                     <td className="r">{money(e.last_12_months, { cents: false })}</td>
                     <td className="small">{e.accounts.join(' + ')}</td>
                   </tr>

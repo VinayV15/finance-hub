@@ -47,10 +47,10 @@ export function Dashboard() {
       )}
 
       <div className="tiles">
-        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Income</div><div className="value">{money(t?.income, { cents: false })}</div><div className="sub">{money((t?.income || 0) / months, { cents: false })} / {group} avg</div></div>
-        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spending</div><div className="value">{money(t?.spend, { cents: false })}</div><div className="sub">{money((t?.spend || 0) / months, { cents: false })} / {group} avg · after {money(t?.refunds, { cents: false })} refunds</div></div>
+        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Income</div><div className="value">{money(t?.income, { cents: false })}</div><div className="sub">{money(t?.paychecks, { cents: false })} paychecks + {money((t?.income || 0) - (t?.paychecks || 0), { cents: false })} other (interest, tax refund…)</div></div>
+        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spending</div><div className="value">{money(t?.spend, { cents: false })}</div><div className="sub">{money((t?.spend || 0) / months, { cents: false })} / {group} avg · after {money(t?.refunds, { cents: false })} refunds, paybacks & reimbursements</div></div>
         <div className="tile"><div className="label">Saved</div><div className={`value ${(t?.saved || 0) < 0 ? 'neg' : ''}`}>{money(t?.saved, { cents: false })}</div><div className="sub">{pct(t?.savings_rate)} of income</div></div>
-        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested</div><div className="value">{money(t?.invested, { cents: false })}</div><div className="sub">moved into Robinhood & other investment accounts</div></div>
+        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested</div><div className="value">{money(t?.invested, { cents: false })}</div><div className="sub">into Robinhood etc.{t?.retirement ? <> · plus {money(t.retirement, { cents: false })} into your 401(k) from paychecks (est., you + match)</> : null}</div></div>
         <div className="tile"><div className="label">Investment earnings</div><div className="value">{money(t?.growth, { cents: false })}</div><div className="sub">dividends & interest inside accounts</div></div>
       </div>
 

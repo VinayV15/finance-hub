@@ -43,7 +43,8 @@ _SELECT_TOTALS = f"""
     ROUND(SUM(CASE WHEN k.flow='spend' THEN t.amount ELSE 0 END), 2) AS spend_gross,
     ROUND(SUM(CASE WHEN k.flow='refund' THEN -t.amount ELSE 0 END), 2) AS refunds,
     ROUND(SUM({_INVESTED}), 2) AS invested,
-    ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS growth"""
+    ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS growth,
+    ROUND(SUM(CASE WHEN k.kind='paycheck' THEN -t.amount ELSE 0 END), 2) AS paychecks"""
 
 _FROM = """FROM transactions t JOIN txn_class k USING(txn_id) LEFT JOIN accounts a ON a.account_id=t.account_id"""
 
@@ -62,7 +63,14 @@ def cashflow(start=None, end=None, group="month", accounts=None):
         rows = c.execute(f"SELECT {PERIODS[group]} AS period, {_SELECT_TOTALS} {_FROM} WHERE {where} "
                          f"GROUP BY period ORDER BY period", args).fetchall()
         total = c.execute(f"SELECT {_SELECT_TOTALS} {_FROM} WHERE {where}", args).fetchone()
-    return {"periods": [_finish(r) for r in rows], "total": _finish(total)}
+    periods = [_finish(r) for r in rows]
+    # 401(k) never hits a bank account, so it's estimated from paychecks (only when viewing all accounts).
+    ret = retirement_by_period(start, end, group) if not accounts else {}
+    for p in periods:
+        p["retirement"] = ret.get(p["period"], 0)
+    total = _finish(total)
+    total["retirement"] = round(sum(ret.values()), 2)
+    return {"periods": periods, "total": total}
 
 
 def by_category(start=None, end=None, accounts=None, flow="spend"):
@@ -173,18 +181,71 @@ def detected_income():
     return out
 
 
-def income_check():
-    """Compare the income you entered against what's actually arriving."""
-    cfg = db.get_json("income", {}) or {}
-    detected = [e for e in detected_income() if e["active"]]
-    detected_annual = sum(e["annualized"] or 0 for e in detected)
-    entered = cfg.get("annual_net")
-    diff = round(detected_annual - entered, 2) if entered and detected_annual else None
+PERIODS_PER_YEAR = {"weekly": 52, "biweekly": 26, "semimonthly": 24, "monthly": 12}
+
+
+def pay_breakdown(cfg=None):
+    """One paycheck, top to bottom: gross -> your 401(k) -> taxes & other deductions -> take-home.
+    Plus the employer match, which never touches a bank account but is still money saved for you."""
+    cfg = cfg if cfg is not None else (db.get_json("income", {}) or {})
+    n = PERIODS_PER_YEAR.get(cfg.get("pay_frequency") or "biweekly", 26)
+    gross_annual, net = cfg.get("gross_annual"), cfg.get("net_per_paycheck")
+    if not gross_annual or not net:
+        return None
+    gross = gross_annual / n
+    k401 = gross * (cfg.get("retirement_pct") or 0) / 100
+    match = gross * (cfg.get("employer_match_pct") or 0) / 100
     return {
-        "settings": cfg,
-        "detected": detected_income(),
-        "detected_annual": round(detected_annual, 2),
-        "difference": diff,
-        "warning": (f"Paychecks are running {'above' if diff > 0 else 'below'} what you entered by "
-                    f"${abs(diff):,.0f}/yr." if diff is not None and abs(diff) > 0.05 * entered else None),
+        "periods_per_year": n,
+        "per_paycheck": {"gross": round(gross, 2), "retirement": round(k401, 2),
+                         "taxes_and_other": round(gross - k401 - net, 2), "take_home": round(net, 2),
+                         "employer_match": round(match, 2)},
+        "per_year": {"gross": round(gross_annual, 2), "retirement": round(k401 * n, 2),
+                     "taxes_and_other": round((gross - k401 - net) * n, 2), "take_home": round(net * n, 2),
+                     "employer_match": round(match * n, 2)},
+        "effective_tax_rate": round((gross - k401 - net) / gross, 4) if gross else None,
     }
+
+
+def paycheck_dates(start=None, end=None):
+    """Distinct paycheck days (a paycheck split across accounts is one day)."""
+    where, args = _where(start, end, None, "k.kind='paycheck'")
+    with db.conn() as c:
+        return [r[0] for r in c.execute(f"SELECT DISTINCT t.date {_FROM} WHERE {where} ORDER BY t.date", args)]
+
+
+def retirement_by_period(start=None, end=None, group="month"):
+    """Estimated 401(k) money (yours + match) per period: paychecks that period x per-paycheck amount."""
+    b = pay_breakdown()
+    if not b:
+        return {}
+    per = b["per_paycheck"]["retirement"] + b["per_paycheck"]["employer_match"]
+    where, args = _where(start, end, None, "k.kind='paycheck'")
+    with db.conn() as c:
+        rows = c.execute(f"SELECT {PERIODS[group]} AS period, COUNT(DISTINCT t.date) AS n {_FROM} WHERE {where} "
+                         f"GROUP BY period", args).fetchall()
+    return {r["period"]: round(r["n"] * per, 2) for r in rows}
+
+
+def income_check():
+    """Your pay settings, what that works out to, and what has actually arrived."""
+    cfg = db.get_json("income", {}) or {}
+    b = pay_breakdown(cfg)
+    year_start = date.today().replace(month=1, day=1).isoformat()
+    ytd_dates = paycheck_dates(start=year_start)
+    with db.conn() as c:
+        ytd_take_home = c.execute(f"SELECT COALESCE(SUM(-t.amount),0) {_FROM} WHERE k.kind='paycheck' AND t.date>=?",
+                                  (year_start,)).fetchone()[0]
+    n = len(ytd_dates)
+    ytd = {"paychecks": n, "take_home": round(ytd_take_home, 2)}
+    warning = None
+    if b:
+        ytd.update(expected_take_home=round(n * b["per_paycheck"]["take_home"], 2),
+                   gross=round(n * b["per_paycheck"]["gross"], 2),
+                   retirement=round(n * b["per_paycheck"]["retirement"], 2),
+                   employer_match=round(n * b["per_paycheck"]["employer_match"], 2))
+        gap = ytd["take_home"] - ytd["expected_take_home"]
+        if n and abs(gap) > b["per_paycheck"]["take_home"] * 0.05:
+            warning = (f"This year's paychecks add up to ${abs(gap):,.2f} {'more' if gap > 0 else 'less'} than "
+                       f"{n} × your take-home per paycheck.")
+    return {"settings": cfg, "breakdown": b, "ytd": ytd, "detected": detected_income(), "warning": warning}
