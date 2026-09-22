@@ -45,7 +45,7 @@ def import_venmo_csv(raw_bytes):
         i = col.get(name)
         return r[i] if i is not None and i < len(r) else ""
 
-    count, ending_balance = 0, None
+    count, ending_balance, latest = 0, None, None
     with db.conn() as c:
         for r in rows[header_idx + 1:]:
             end = _money(get(r, "Ending Balance"))
@@ -57,6 +57,7 @@ def import_venmo_csv(raw_bytes):
                 continue
             if not txn_id:
                 txn_id = hashlib.sha1("|".join(r).encode()).hexdigest()[:16]
+            latest = max(latest or when[:10], when[:10])
             who = (get(r, "To") if amount < 0 else get(r, "From")).strip()
             note = get(r, "Note").strip()
             vtype = get(r, "Type").strip()
@@ -69,9 +70,16 @@ def import_venmo_csv(raw_bytes):
                 counterparty=who or None,
             )
             count += 1
-        if ending_balance is not None or count:
-            existing = c.execute("SELECT balance FROM accounts WHERE account_id=?", (VENMO_ACCOUNT_ID,)).fetchone()
-            balance = ending_balance if ending_balance is not None else (existing["balance"] if existing else 0)
+        # Only the newest statement sets the balance, so importing an old month never rolls it back.
+        asof = c.execute("SELECT value FROM meta WHERE key='venmo_balance_asof'").fetchone()
+        asof = asof["value"] if asof else c.execute(  # first run: newest Venmo date already stored (excluding this file)
+            "SELECT MAX(date) FROM transactions WHERE account_id=? AND date > ?", (VENMO_ACCOUNT_ID, latest or "")).fetchone()[0]
+        newest = latest and (not asof or latest >= asof)
+        if newest:
+            c.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('venmo_balance_asof', ?)", (latest,))
+        existing = c.execute("SELECT balance FROM accounts WHERE account_id=?", (VENMO_ACCOUNT_ID,)).fetchone()
+        if count and (newest or not existing):
+            balance = ending_balance if ending_balance is not None and newest else (existing["balance"] if existing else 0)
             c.execute(
                 """INSERT OR REPLACE INTO accounts
                    (account_id, item_id, source, institution, name, mask, type, subtype, balance, available, currency, updated_at)
