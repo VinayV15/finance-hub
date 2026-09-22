@@ -9,6 +9,7 @@ const FLOWS: { key: Flow; help: string }[] = [
   { key: 'refund', help: 'Money back — lowers spending in its category' },
   { key: 'transfer', help: 'Between my own accounts — not counted' },
   { key: 'growth', help: 'Earned inside an investment account' },
+  { key: 'ignore', help: 'Not real money — left out of every total and chart (e.g. bank verification deposits)' },
 ]
 
 /** "ZELLE TO DOE MOM ON 07/11 REF #RP0Z…" -> "zelle to doe mom" — a sensible default rule pattern. */
@@ -31,7 +32,7 @@ export function TxnRow({ t, onClick }: { t: Txn; onClick: () => void }) {
           {t.review ? <span className="badge warn">⚠ check</span> : null}
         </div>
       </div>
-      <div className={`row-amt ${t.flow === 'transfer' ? 'muted' : out ? '' : 'pos'}`}>{out ? '−' : '+'}{money(Math.abs(t.amount))}</div>
+      <div className={`row-amt ${t.flow === 'transfer' || t.flow === 'ignore' ? 'muted' : out ? '' : 'pos'}`} style={t.flow === 'ignore' ? { textDecoration: 'line-through' } : undefined}>{out ? '−' : '+'}{money(Math.abs(t.amount))}</div>
     </div>
   )
 }

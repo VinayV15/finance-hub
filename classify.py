@@ -7,6 +7,7 @@ Each transaction gets a *flow*:
   refund    money back (merchant refunds, friends paying you back, work reimbursements) — reduces spending
   transfer  money moving between your own accounts (card payments, Robinhood contributions, Venmo funding)
   growth    dividends/interest earned inside an investment account (not spendable income)
+  ignore    not real money movement (bank verification micro-deposits, test deposits) — left out of everything
 
 Priority: your per-transaction fix > your rules > automatic detection.
 Rebuilt from scratch on every sync/import; results live in the txn_class table.
@@ -53,6 +54,8 @@ OWN_ALIASES = {
 PAYROLL_RE = re.compile(r"payroll|direct dep|salary|\bpayrl\b|\bach credit\b.*payroll", re.I)
 P2P_RE = re.compile(r"\bzelle\b|money transfer authorized .* apple|apple cash|cash app|\bpaypal\b", re.I)
 MORTGAGE_RE = re.compile(r"servicer|servicer|loancare|mortgage", re.I)
+# Tiny deposits/withdrawals a company makes to confirm you own the account (Google, PayPal, Plaid…).
+VERIFY_RE = re.compile(r"acctverify|acct verify|verification|verify|micro[- ]?deposit|trial deposit|ach test", re.I)
 ATM_OUT_RE = re.compile(r"atm withdrawal|non-wf atm withdrawal", re.I)
 
 
@@ -108,6 +111,10 @@ def _auto(t, own):
     detailed = t["detailed"] or ""
     primary = t["raw_primary"] or ""
     cat = _base_category(t)
+
+    # Bank-ownership verification micro-deposits
+    if abs(t["amount"]) < 2 and VERIFY_RE.search(name):
+        return "ignore", "verification", "Ignored", 0, "account-verification micro-deposit — not real income or spending"
 
     # Investment-account cash movements
     if t["source"] == "plaid_inv":
@@ -202,7 +209,7 @@ def _pair_transfers(txns, cls):
         c = cls[t["txn_id"]]
         if c["locked"] and c["flow"] != "transfer":
             continue
-        if c["kind"] in ("p2p", "cash", "paycheck", "mortgage"):  # money to/from people is never my own transfer
+        if c["flow"] == "ignore" or c["kind"] in ("p2p", "cash", "paycheck", "mortgage"):  # money to/from people is never my own transfer
             continue
         if t["amount"] and _transfer_like(t) or c["flow"] == "transfer":
             by_amt[round(abs(t["amount"]), 2)].append(t)
@@ -269,7 +276,7 @@ def _check_pay_schedule(txns, cls):
     pay = [t for t in txns if cls[t["txn_id"]]["kind"] == "paycheck" and not cls[t["txn_id"]]["locked"]]
     for t in pay:
         if -t["amount"] < 5:
-            cls[t["txn_id"]].update(flow="transfer", kind="test_deposit", category="Transfer", review=0,
+            cls[t["txn_id"]].update(flow="ignore", kind="test_deposit", category="Ignored", review=0,
                                     reason="tiny test deposit from payroll setup — not counted")
     pay = [t for t in pay if cls[t["txn_id"]]["kind"] == "paycheck"]
     days = defaultdict(lambda: defaultdict(list))  # employer -> date -> [txns] (split paychecks share a day)

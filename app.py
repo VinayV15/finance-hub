@@ -255,7 +255,7 @@ def api_coverage():
 
 # ---------- transactions: list, fix, rules ----------
 
-FLOWS = {"spend", "income", "refund", "transfer", "growth"}
+FLOWS = {"spend", "income", "refund", "transfer", "growth", "ignore"}
 
 
 @app.route("/api/transactions")

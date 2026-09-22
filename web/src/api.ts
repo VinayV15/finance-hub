@@ -1,6 +1,6 @@
 // Thin wrapper around the Flask API. Every call sends the session cookie; a 401 bounces to the PIN screen.
 
-export type Flow = 'spend' | 'income' | 'refund' | 'transfer' | 'growth'
+export type Flow = 'spend' | 'income' | 'refund' | 'transfer' | 'growth' | 'ignore'
 
 export interface Account {
   account_id: string

@@ -47,5 +47,5 @@ export const ago = (s: string | null) => {
 }
 
 export const FLOW_LABEL: Record<string, string> = {
-  spend: 'Spending', income: 'Income', refund: 'Refund', transfer: 'Transfer', growth: 'Growth',
+  spend: 'Spending', income: 'Income', refund: 'Refund', transfer: 'Transfer', growth: 'Growth', ignore: 'Ignored',
 }
