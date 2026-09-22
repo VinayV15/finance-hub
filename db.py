@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS rules (
     set_category   TEXT,
     created_at     TEXT
 );
+-- Extra principal inside each mortgage payment (mortgage.py). Counted as saving, not spending.
+CREATE TABLE IF NOT EXISTS mortgage_alloc (
+    txn_id         TEXT PRIMARY KEY,
+    extra          REAL
+);
 -- Output of classify.py, rebuilt after every sync/import. Never edit by hand.
 CREATE TABLE IF NOT EXISTS txn_class (
     txn_id         TEXT PRIMARY KEY,

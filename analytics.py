@@ -40,13 +40,18 @@ _INVESTED = """CASE
 
 _SELECT_TOTALS = f"""
     ROUND(SUM(CASE WHEN k.flow='income' THEN -t.amount ELSE 0 END), 2) AS income,
-    ROUND(SUM(CASE WHEN k.flow='spend' THEN t.amount ELSE 0 END), 2) AS spend_gross,
+    ROUND(SUM(CASE WHEN k.flow='spend' THEN t.amount - COALESCE(m.extra, 0) ELSE 0 END), 2) AS spend_gross,
     ROUND(SUM(CASE WHEN k.flow='refund' THEN -t.amount ELSE 0 END), 2) AS refunds,
     ROUND(SUM({_INVESTED}), 2) AS invested,
+    ROUND(SUM(COALESCE(m.extra, 0)), 2) AS extra_principal,
     ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS growth,
     ROUND(SUM(CASE WHEN k.kind IN ('paycheck','paycheck_bonus') THEN -t.amount ELSE 0 END), 2) AS paychecks"""
 
-_FROM = """FROM transactions t JOIN txn_class k USING(txn_id) LEFT JOIN accounts a ON a.account_id=t.account_id"""
+_FROM = """FROM transactions t JOIN txn_class k USING(txn_id) LEFT JOIN accounts a ON a.account_id=t.account_id
+    LEFT JOIN mortgage_alloc m ON m.txn_id=t.txn_id"""
+
+# Spending amount of a row: extra mortgage principal is saving (it becomes equity), not spending.
+_SPEND_AMT = "(t.amount - COALESCE(m.extra, 0))"
 
 
 def _finish(row):
@@ -78,9 +83,9 @@ def by_category(start=None, end=None, accounts=None, flow="spend"):
     flows = ("spend", "refund") if flow == "spend" else ("income",)
     where, args = _where(start, end, accounts, f"k.flow IN ({','.join('?' * len(flows))})")
     args += list(flows)
-    sign = "" if flow == "spend" else "-"
+    expr = _SPEND_AMT if flow == "spend" else "-t.amount"
     with db.conn() as c:
-        rows = c.execute(f"""SELECT k.category, ROUND(SUM({sign}t.amount), 2) AS amount, COUNT(*) AS n
+        rows = c.execute(f"""SELECT k.category, ROUND(SUM({expr}), 2) AS amount, COUNT(*) AS n
             {_FROM} WHERE {where} GROUP BY k.category HAVING amount != 0 ORDER BY amount DESC""", args).fetchall()
     return [dict(r) for r in rows]
 
@@ -100,7 +105,7 @@ def by_account(start=None, end=None):
 def top_merchants(start=None, end=None, accounts=None, limit=15):
     where, args = _where(start, end, accounts, "k.flow IN ('spend','refund')")
     with db.conn() as c:
-        rows = c.execute(f"""SELECT t.name, ROUND(SUM(t.amount),2) AS amount, COUNT(*) AS n
+        rows = c.execute(f"""SELECT t.name, ROUND(SUM({_SPEND_AMT}),2) AS amount, COUNT(*) AS n
             {_FROM} WHERE {where} GROUP BY lower(t.name) HAVING amount > 0 ORDER BY amount DESC LIMIT ?""",
                          args + [limit]).fetchall()
     return [dict(r) for r in rows]

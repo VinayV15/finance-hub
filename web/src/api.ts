@@ -146,3 +146,26 @@ export const post = <T,>(path: string, body: unknown) => api<T>(path, { method: 
 export const put = <T,>(path: string, body: unknown) => api<T>(path, { method: 'PUT', body: JSON.stringify(body) })
 export const patch = <T,>(path: string, body: unknown) => api<T>(path, { method: 'PATCH', body: JSON.stringify(body) })
 export const del = <T,>(path: string) => api<T>(path, { method: 'DELETE' })
+
+export interface MortgageRow { n: number; date: string; principal: number; interest: number; balance: number; extra?: number; projected?: boolean; rate?: number; your_pi?: number; subsidy?: number }
+export interface MortgagePayment { txn_id: string | null; date: string; amount: number; institution: string; scheduled: number; extra: number }
+export interface Mortgage {
+  config: {
+    lender: string; servicer: string; original_amount: number; note_rate: number; term_months: number
+    closing_date: string; first_payment: string; buydown_rates: number[]; escrow_monthly: number; pmi_monthly: number
+    taxes_monthly?: number; insurance_monthly?: number; original_value: number; appraised_value?: number; current_value?: number | null
+    checkpoints: { date: string; balance: number }[]
+  } | null
+  balance: number; original_balance_now: number; ahead_by: number; paid_off_pct: number
+  principal_paid: number; interest_paid: number; extra_principal: number; total_paid: number
+  paid_through_payment: number; paid_through_date: string | null
+  payoff_original: string; payoff_projected: string; months_saved: number
+  interest_original: number; interest_projected: number; interest_saved: number
+  note_pi: number; current_due: number; rate_now: number
+  home_value: number; equity: number; ltv: number
+  pmi: { request_at_balance: number; auto_at_balance: number; request_date_projected: string | null; auto_date_projected: string | null; request_date_original: string | null; monthly: number }
+  payments: MortgagePayment[]
+  original: MortgageRow[]
+  actual: MortgageRow[]
+  years: { year: string; principal: number; interest: number; extra: number; end_balance: number }[]
+}

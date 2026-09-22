@@ -22,6 +22,7 @@ import analytics  # noqa: E402
 import classify  # noqa: E402
 import db  # noqa: E402
 import manual  # noqa: E402
+import mortgage  # noqa: E402
 import plaid_sync  # noqa: E402
 import statements  # noqa: E402
 
@@ -407,6 +408,66 @@ def api_income_history_delete(effective):
     cfg["history"] = [h for h in cfg.get("history") or [] if h["effective"] != effective]
     db.set_json("income", cfg)
     return jsonify(analytics.income_check())
+
+
+# ---------- mortgage ----------
+
+@app.route("/api/mortgage")
+@login_required
+def api_mortgage():
+    try:
+        extra = float(request.args.get("extra") or 0)
+    except ValueError:
+        extra = 0.0
+    s = mortgage.summary(planned_extra_monthly=max(extra, 0))
+    return jsonify(s or {"config": None})
+
+
+def _money_arg(v):
+    return float(str(v).replace(",", "").replace("$", "").strip())
+
+
+@app.route("/api/mortgage", methods=["PUT"])
+@login_required
+def api_mortgage_update():
+    """Edit the numbers that change over time (escrow after the yearly review, PMI, home value)."""
+    cfg = mortgage.get_config()
+    if not cfg:
+        return jsonify(error="No mortgage set up."), 400
+    b = request.get_json() or {}
+    try:
+        for k in ("escrow_monthly", "pmi_monthly", "current_value"):
+            if k in b:
+                cfg[k] = _money_arg(b[k]) if str(b[k]).strip() else None
+    except ValueError:
+        return jsonify(error="Amounts must be numbers."), 400
+    mortgage.save_config(cfg)
+    classify.run()
+    return jsonify(mortgage.summary())
+
+
+@app.route("/api/mortgage/checkpoints", methods=["POST"])
+@login_required
+def api_mortgage_checkpoint():
+    """Pin the model to the real principal balance from a servicer statement."""
+    cfg = mortgage.get_config()
+    b = request.get_json() or {}
+    try:
+        cp = {"date": str(date.fromisoformat(b["date"])), "balance": _money_arg(b["balance"])}
+    except (KeyError, ValueError):
+        return jsonify(error="Enter the statement date and the principal balance."), 400
+    cfg["checkpoints"] = [c for c in cfg.get("checkpoints") or [] if c["date"] != cp["date"]] + [cp]
+    mortgage.save_config(cfg)
+    return jsonify(mortgage.summary())
+
+
+@app.route("/api/mortgage/checkpoints/<d>", methods=["DELETE"])
+@login_required
+def api_mortgage_checkpoint_delete(d):
+    cfg = mortgage.get_config()
+    cfg["checkpoints"] = [c for c in cfg.get("checkpoints") or [] if c["date"] != d]
+    mortgage.save_config(cfg)
+    return jsonify(mortgage.summary())
 
 
 # ---------- daily background refresh ----------

@@ -4,6 +4,7 @@ import { Accounts } from './pages/Accounts'
 import { Dashboard } from './pages/Dashboard'
 import { Home } from './pages/Home'
 import { Income } from './pages/Income'
+import { Mortgage } from './pages/Mortgage'
 import { Transactions } from './pages/Transactions'
 
 const NAV = [
@@ -12,14 +13,15 @@ const NAV = [
   { to: '/transactions', label: 'Transactions', icon: '≡' },
   { to: '/review', label: 'Review', icon: '✓' },
   { to: '/income', label: 'Income', icon: '$' },
-  { to: '/accounts', label: 'Accounts', icon: '⌂' },
+  { to: '/mortgage', label: 'Mortgage', icon: '⌂' },
+  { to: '/accounts', label: 'Accounts', icon: '▣' },
 ]
 
 function Nav({ bottom = false }: { bottom?: boolean }) {
   const { summary } = useSummary()
   return (
     <>
-      {NAV.map((n) => (
+      {NAV.filter((n) => !bottom || n.to !== '/review').map((n) => (
         <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
           {bottom && <span aria-hidden style={{ fontSize: 16 }}>{n.icon}</span>}
           <span>{n.label}</span>
@@ -47,6 +49,7 @@ function Shell() {
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/review" element={<Transactions reviewOnly />} />
           <Route path="/income" element={<Income />} />
+          <Route path="/mortgage" element={<Mortgage />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="*" element={<Home />} />
         </Routes>

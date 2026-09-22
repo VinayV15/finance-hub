@@ -329,4 +329,6 @@ def run():
         c.executemany(
             "INSERT INTO txn_class(txn_id, flow, kind, category, pair_id, review, reason) VALUES (?,?,?,?,?,?,?)",
             [(tid, v["flow"], v["kind"], v["category"], v["pair_id"], v["review"], v["reason"]) for tid, v in cls.items()])
+    import mortgage  # local import: mortgage reads the classification we just wrote
+    mortgage.refresh_allocations()
     return len(cls)
