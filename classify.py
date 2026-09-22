@@ -116,6 +116,11 @@ def _auto(t, own):
     if abs(t["amount"]) < 2 and VERIFY_RE.search(name):
         return "ignore", "verification", "Ignored", 0, "account-verification micro-deposit — not real income or spending"
 
+    # Wealthfront statement "ACH transfer in/out" = a transfer you started to/from your own linked bank
+    # (the other half may predate that bank's history, so don't wait for a match).
+    if t["source"] == "import" and name.startswith("ACH transfer"):
+        return "transfer", "internal", "Transfer", 0, "transfer you started to/from your own bank"
+
     # Investment-account cash movements
     if t["source"] == "plaid_inv":
         st = t["txn_type"] or ""
