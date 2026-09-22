@@ -68,6 +68,19 @@ export function Accounts() {
     } catch (e) { toast((e as Error).message, true) }
   }
 
+  const importStatements = async (files: FileList | null) => {
+    if (!files?.length) return
+    const fd = new FormData(); for (const f of Array.from(files)) fd.append('files', f)
+    toast(`Reading ${files.length} statement${files.length === 1 ? '' : 's'}…`)
+    try {
+      const { report } = await api<{ report: { file: string; imported?: number; skipped_plaid?: number; error?: string }[] }>('/api/import/wealthfront', { method: 'POST', body: fd })
+      const n = report.reduce((s, r) => s + (r.imported || 0), 0)
+      const bad = report.filter((r) => r.error)
+      toast(bad.length ? `Imported ${n}; couldn't read ${bad.map((b) => b.file).join(', ')}` : `Imported ${n} Wealthfront transactions from ${report.length} file(s).`, !!bad.length)
+      reload()
+    } catch (e) { toast((e as Error).message, true) }
+  }
+
   const saveManual = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
@@ -119,6 +132,9 @@ export function Accounts() {
           <h2>Import Venmo</h2>
           <p className="muted small" style={{ marginTop: -4 }}>Venmo app → Me → Settings → Statements → pick a month → Download CSV. Re-importing a month is safe.</p>
           <input type="file" accept=".csv,text/csv" onChange={(e) => { importVenmo(e.target.files?.[0]); e.target.value = '' }} />
+          <h2 style={{ marginTop: 18 }}>Import Wealthfront statements</h2>
+          <p className="muted small" style={{ marginTop: -4 }}>Wealthfront → Documents → Statements → Cash Account monthly PDFs. Select several at once. Anything Plaid already has is skipped, and re-importing is safe.</p>
+          <input type="file" accept="application/pdf,.pdf" multiple onChange={(e) => { importStatements(e.target.files); e.target.value = '' }} />
         </div>
 
         <div className="card">

@@ -23,6 +23,7 @@ import classify  # noqa: E402
 import db  # noqa: E402
 import manual  # noqa: E402
 import plaid_sync  # noqa: E402
+import statements  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -30,7 +31,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Strict",
-    MAX_CONTENT_LENGTH=10 * 1024 * 1024,
+    MAX_CONTENT_LENGTH=60 * 1024 * 1024,  # a year of statement PDFs in one upload
 )
 PIN = os.environ["DASHBOARD_PIN"]
 SYNC_EVERY = timedelta(hours=int(os.environ.get("SYNC_EVERY_HOURS", "24")))
@@ -177,6 +178,15 @@ def venmo_upload():
         return jsonify(imported=manual.import_venmo_csv(f.read()))
     except ValueError as e:
         return jsonify(error=str(e)), 400
+
+
+@app.route("/api/import/wealthfront", methods=["POST"])
+@login_required
+def wealthfront_upload():
+    files = [(f.filename, f.read()) for f in request.files.getlist("files") if f and f.filename]
+    if not files:
+        return jsonify(error="No files uploaded."), 400
+    return jsonify(report=statements.import_wealthfront_pdfs(files))
 
 
 @app.route("/api/manual", methods=["POST"])

@@ -140,7 +140,8 @@ def detected_income():
     """Group paycheck deposits by employer. A paycheck split across accounts (same day) counts once."""
     with db.conn() as c:
         rows = [dict(r) for r in c.execute(f"""SELECT t.date, t.name, -t.amount AS amount, a.institution
-            {_FROM} WHERE k.flow='income' AND k.kind='paycheck' ORDER BY t.date""")]
+            {_FROM} WHERE k.flow='income' AND k.kind='paycheck' AND -t.amount >= 5  -- skip $0.01 test deposits
+            ORDER BY t.date""")]
     by_emp = defaultdict(lambda: defaultdict(float))
     split = defaultdict(set)
     for r in rows:
