@@ -8,7 +8,7 @@ import os
 import socket
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
 from dotenv import load_dotenv
@@ -370,7 +370,42 @@ def api_income():
         cfg.update(pay_frequency=freq, employer=(b.get("employer") or "").strip(),
                    match_notes=(b.get("match_notes") or "").strip(), notes=(b.get("notes") or "").strip())
         cfg["annual_net"] = round(cfg["net_per_paycheck"] * analytics.PERIODS_PER_YEAR[freq], 2)
+        old = db.get_json("income", {}) or {}
+        cfg["history"] = old.get("history") or []
+        cfg["effective"] = (b.get("effective") or old.get("effective") or "").strip() or None
         db.set_json("income", cfg)
+    return jsonify(analytics.income_check())
+
+
+@app.route("/api/income/history", methods=["POST"])
+@login_required
+def api_income_history_add():
+    """Add a past pay period, e.g. last year's salary before a raise."""
+    b = request.get_json() or {}
+    try:
+        entry = {
+            "effective": str(date.fromisoformat(b["effective"])),
+            "gross_annual": float(str(b["gross_annual"]).replace(",", "").replace("$", "")),
+            "net_per_paycheck": float(str(b["net_per_paycheck"]).replace(",", "").replace("$", "")),
+            "retirement_pct": float(b.get("retirement_pct") or 0),
+            "employer_match_pct": float(b.get("employer_match_pct") or 0),
+            "pay_frequency": b.get("pay_frequency") or "biweekly",
+        }
+    except (KeyError, ValueError):
+        return jsonify(error="Start date, salary, and take-home per paycheck are required."), 400
+    cfg = db.get_json("income", {}) or {}
+    hist = [h for h in cfg.get("history") or [] if h["effective"] != entry["effective"]] + [entry]
+    cfg["history"] = sorted(hist, key=lambda h: h["effective"])
+    db.set_json("income", cfg)
+    return jsonify(analytics.income_check())
+
+
+@app.route("/api/income/history/<effective>", methods=["DELETE"])
+@login_required
+def api_income_history_delete(effective):
+    cfg = db.get_json("income", {}) or {}
+    cfg["history"] = [h for h in cfg.get("history") or [] if h["effective"] != effective]
+    db.set_json("income", cfg)
     return jsonify(analytics.income_check())
 
 

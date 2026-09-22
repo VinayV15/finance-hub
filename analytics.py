@@ -44,7 +44,7 @@ _SELECT_TOTALS = f"""
     ROUND(SUM(CASE WHEN k.flow='refund' THEN -t.amount ELSE 0 END), 2) AS refunds,
     ROUND(SUM({_INVESTED}), 2) AS invested,
     ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS growth,
-    ROUND(SUM(CASE WHEN k.kind='paycheck' THEN -t.amount ELSE 0 END), 2) AS paychecks"""
+    ROUND(SUM(CASE WHEN k.kind IN ('paycheck','paycheck_bonus') THEN -t.amount ELSE 0 END), 2) AS paychecks"""
 
 _FROM = """FROM transactions t JOIN txn_class k USING(txn_id) LEFT JOIN accounts a ON a.account_id=t.account_id"""
 
@@ -147,15 +147,18 @@ def _frequency(gaps):
 def detected_income():
     """Group paycheck deposits by employer. A paycheck split across accounts (same day) counts once."""
     with db.conn() as c:
-        rows = [dict(r) for r in c.execute(f"""SELECT t.date, t.name, -t.amount AS amount, a.institution
-            {_FROM} WHERE k.flow='income' AND k.kind='paycheck' AND -t.amount >= 5  -- skip $0.01 test deposits
+        rows = [dict(r) for r in c.execute(f"""SELECT t.date, t.name, -t.amount AS amount, a.institution, k.kind
+            {_FROM} WHERE k.flow='income' AND k.kind IN ('paycheck','paycheck_bonus')
             ORDER BY t.date""")]
     by_emp = defaultdict(lambda: defaultdict(float))
     split = defaultdict(set)
+    bonus_days = defaultdict(set)
     for r in rows:
         k = _employer_key(r["name"])
         by_emp[k][r["date"]] += r["amount"]
         split[k].add(r["institution"])
+        if r["kind"] == "paycheck_bonus":
+            bonus_days[k].add(r["date"])
     today = date.today()
     out = []
     for emp, days in by_emp.items():
@@ -163,7 +166,8 @@ def detected_income():
         amounts = [days[d] for d in dates]
         gaps = [(date.fromisoformat(b) - date.fromisoformat(a)).days for a, b in zip(dates, dates[1:])]
         freq, per_year = _frequency(gaps[-8:])
-        recent = amounts[-6:]
+        regular = [days[d] for d in dates if d not in bonus_days[emp]]
+        recent = (regular or amounts)[-6:]
         last_date = date.fromisoformat(dates[-1])
         out.append({
             "employer": emp,
@@ -176,6 +180,10 @@ def detected_income():
             "last_12_months": round(sum(v for d, v in days.items() if date.fromisoformat(d) >= today - timedelta(days=365)), 2),
             "accounts": sorted(i for i in split[emp] if i),
             "history": [{"date": d, "amount": round(days[d], 2)} for d in dates],
+            "bonuses": [{"date": d, "total": round(days[d], 2),
+                         "bonus": round(days[d] - statistics.median(
+                             [days[x] for x in dates if x not in bonus_days[emp]][-6:] or [0]), 2)}
+                        for d in sorted(bonus_days[emp])],
         })
     out.sort(key=lambda e: e["last"], reverse=True)
     return out
@@ -207,24 +215,46 @@ def pay_breakdown(cfg=None):
     }
 
 
+def pay_history():
+    """Pay settings over time, oldest first. Each entry applies from its `effective` date until the next.
+    The current settings (the Income form) are the newest entry."""
+    cfg = db.get_json("income", {}) or {}
+    past = sorted(cfg.get("history") or [], key=lambda h: h["effective"])
+    current = {k: cfg.get(k) for k in ("gross_annual", "net_per_paycheck", "retirement_pct", "employer_match_pct",
+                                       "pay_frequency")}
+    current["effective"] = cfg.get("effective") or (past[-1]["effective"] if past else "0000-01-01")
+    return past + [current] if cfg.get("gross_annual") else past
+
+
+def settings_on(day, history=None):
+    """The pay settings in effect on a given date (ISO string)."""
+    history = history if history is not None else pay_history()
+    active = [h for h in history if h["effective"] <= day]
+    return active[-1] if active else None
+
+
 def paycheck_dates(start=None, end=None):
     """Distinct paycheck days (a paycheck split across accounts is one day)."""
-    where, args = _where(start, end, None, "k.kind='paycheck'")
+    where, args = _where(start, end, None, "k.kind IN ('paycheck','paycheck_bonus')")
     with db.conn() as c:
         return [r[0] for r in c.execute(f"SELECT DISTINCT t.date {_FROM} WHERE {where} ORDER BY t.date", args)]
 
 
 def retirement_by_period(start=None, end=None, group="month"):
-    """Estimated 401(k) money (yours + match) per period: paychecks that period x per-paycheck amount."""
-    b = pay_breakdown()
-    if not b:
+    """Estimated 401(k) money (yours + match) per period, using the pay settings in effect on each payday."""
+    history = pay_history()
+    if not history:
         return {}
-    per = b["per_paycheck"]["retirement"] + b["per_paycheck"]["employer_match"]
-    where, args = _where(start, end, None, "k.kind='paycheck'")
+    where, args = _where(start, end, None, "k.kind IN ('paycheck','paycheck_bonus')")
     with db.conn() as c:
-        rows = c.execute(f"SELECT {PERIODS[group]} AS period, COUNT(DISTINCT t.date) AS n {_FROM} WHERE {where} "
-                         f"GROUP BY period", args).fetchall()
-    return {r["period"]: round(r["n"] * per, 2) for r in rows}
+        rows = c.execute(f"SELECT DISTINCT {PERIODS[group]} AS period, t.date {_FROM} WHERE {where}", args).fetchall()
+    out = defaultdict(float)
+    for r in rows:
+        h = settings_on(r["date"], history)
+        b = pay_breakdown(h) if h else None
+        if b:
+            out[r["period"]] += b["per_paycheck"]["retirement"] + b["per_paycheck"]["employer_match"]
+    return {k: round(v, 2) for k, v in out.items()}
 
 
 def income_check():
@@ -234,7 +264,7 @@ def income_check():
     year_start = date.today().replace(month=1, day=1).isoformat()
     ytd_dates = paycheck_dates(start=year_start)
     with db.conn() as c:
-        ytd_take_home = c.execute(f"SELECT COALESCE(SUM(-t.amount),0) {_FROM} WHERE k.kind='paycheck' AND t.date>=?",
+        ytd_take_home = c.execute(f"SELECT COALESCE(SUM(-t.amount),0) {_FROM} WHERE k.kind IN ('paycheck','paycheck_bonus') AND t.date>=?",
                                   (year_start,)).fetchone()[0]
     n = len(ytd_dates)
     ytd = {"paychecks": n, "take_home": round(ytd_take_home, 2)}
@@ -248,4 +278,5 @@ def income_check():
         if n and abs(gap) > b["per_paycheck"]["take_home"] * 0.05:
             warning = (f"This year's paychecks add up to ${abs(gap):,.2f} {'more' if gap > 0 else 'less'} than "
                        f"{n} × your take-home per paycheck.")
-    return {"settings": cfg, "breakdown": b, "ytd": ytd, "detected": detected_income(), "warning": warning}
+    return {"settings": cfg, "breakdown": b, "ytd": ytd, "detected": detected_income(), "warning": warning,
+            "history": pay_history()}

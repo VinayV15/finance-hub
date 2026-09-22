@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { put, type IncomeCheck } from '../api'
+import { del, post, put, type IncomeCheck } from '../api'
 import { money, moneyShort, niceDate, pct } from '../format'
 import { useFetch, useToast } from '../hooks'
 
@@ -21,7 +21,9 @@ const LINES = [
 export function Income() {
   const toast = useToast()
   const { data, reload } = useFetch<IncomeCheck>('/api/income')
-  const [f, setF] = useState({ gross_annual: '', net_per_paycheck: '', retirement_pct: '', employer_match_pct: '', pay_frequency: 'biweekly', employer: '', match_notes: '', notes: '' })
+  const [f, setF] = useState({ gross_annual: '', net_per_paycheck: '', retirement_pct: '', employer_match_pct: '', pay_frequency: 'biweekly', employer: '', match_notes: '', notes: '', effective: '' })
+  const blankPast = { effective: '', gross_annual: '', net_per_paycheck: '', retirement_pct: '', employer_match_pct: '' }
+  const [past, setPast] = useState(blankPast)
   useEffect(() => {
     if (!data) return
     const s = data.settings
@@ -35,6 +37,7 @@ export function Income() {
       employer: s.employer || active?.employer || '',
       match_notes: s.match_notes || '',
       notes: s.notes || '',
+      effective: s.effective || '',
     })
   }, [data])
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value })
@@ -42,6 +45,13 @@ export function Income() {
   const save = async () => {
     try { await put('/api/income', f); toast('Saved.'); reload() } catch (e) { toast((e as Error).message, true) }
   }
+
+  const addPast = async () => {
+    try { await post('/api/income/history', past); setPast(blankPast); toast('Saved.'); reload() } catch (e) { toast((e as Error).message, true) }
+  }
+  const removePast = async (eff: string) => { await del(`/api/income/history/${eff}`); reload() }
+  const history = (data?.history || []).filter((h) => h.effective !== (data?.settings.effective || ''))
+  const bonuses = (data?.detected || []).flatMap((e) => e.bonuses.map((x) => ({ ...x, employer: e.employer }))).sort((a, z) => z.date.localeCompare(a.date))
 
   const b = data?.breakdown
   const ytd = data?.ytd
@@ -71,6 +81,7 @@ export function Income() {
             <label className="field">Your 401(k) %<input className="input" inputMode="decimal" value={f.retirement_pct} onChange={set('retirement_pct')} placeholder="5" /></label>
             <label className="field">Employer match %<input className="input" inputMode="decimal" value={f.employer_match_pct} onChange={set('employer_match_pct')} placeholder="4" /></label>
             <label className="field">Employer<input className="input" value={f.employer} onChange={set('employer')} /></label>
+            <label className="field">In effect since<input className="input" type="date" value={f.effective} onChange={set('effective')} /></label>
           </div>
           <label className="field" style={{ marginTop: 12 }}>How the match works<input className="input" value={f.match_notes} onChange={set('match_notes')} placeholder="you 5% → they 4%" /></label>
           <label className="field" style={{ marginTop: 12 }}>Notes (bonuses, raises…)<input className="input" value={f.notes} onChange={set('notes')} /></label>
@@ -101,6 +112,45 @@ export function Income() {
               <p className="small muted" style={{ marginBottom: 0 }}>Taxes & deductions are {pct(b.effective_tax_rate)} of gross. Retirement saving: {money(b.per_year.retirement + b.per_year.employer_match, { cents: false })}/yr total.</p>
             </>
           )}
+        </div>
+      </div>
+
+      <div className="grid two section">
+        <div className="card">
+          <h2>Past pay</h2>
+          <p className="muted small" style={{ marginTop: -4 }}>Earlier salaries, so 401(k) and take-home for past years use what you actually earned then.</p>
+          {history.length > 0 && (
+            <table className="data">
+              <thead><tr><th>From</th><th className="r">Salary</th><th className="r">Take-home</th><th className="r">401(k)</th><th className="r">Match</th><th></th></tr></thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.effective}>
+                    <td>{niceDate(h.effective)}</td><td className="r">{money(h.gross_annual, { cents: false })}</td>
+                    <td className="r">{money(h.net_per_paycheck)}</td><td className="r">{h.retirement_pct}%</td><td className="r">{h.employer_match_pct}%</td>
+                    <td className="r"><button className="link-btn" onClick={() => removePast(h.effective)}>Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div className="form-grid" style={{ marginTop: 10 }}>
+            <label className="field">From<input className="input" type="date" value={past.effective} onChange={(e) => setPast({ ...past, effective: e.target.value })} /></label>
+            <label className="field">Salary<input className="input" inputMode="decimal" value={past.gross_annual} onChange={(e) => setPast({ ...past, gross_annual: e.target.value })} /></label>
+            <label className="field">Take-home / check<input className="input" inputMode="decimal" value={past.net_per_paycheck} onChange={(e) => setPast({ ...past, net_per_paycheck: e.target.value })} /></label>
+            <label className="field">401(k) %<input className="input" inputMode="decimal" value={past.retirement_pct} onChange={(e) => setPast({ ...past, retirement_pct: e.target.value })} /></label>
+            <label className="field">Match %<input className="input" inputMode="decimal" value={past.employer_match_pct} onChange={(e) => setPast({ ...past, employer_match_pct: e.target.value })} /></label>
+            <button className="btn" onClick={addPast}>Add</button>
+          </div>
+        </div>
+        <div className="card">
+          <h2>Bonuses</h2>
+          <p className="muted small" style={{ marginTop: -4 }}>Paydays well above your usual paycheck. The extra is estimated as that day's total minus a normal paycheck.</p>
+          {bonuses.length === 0 ? <div className="empty">None found.</div> : bonuses.map((x) => (
+            <div className="row" key={x.date}>
+              <div className="row-main"><div className="row-title">{niceDate(x.date)}</div><div className="muted small">{x.employer} · deposit was {money(x.total)}</div></div>
+              <div className="row-amt">≈ {money(x.bonus, { cents: false })}</div>
+            </div>
+          ))}
         </div>
       </div>
 

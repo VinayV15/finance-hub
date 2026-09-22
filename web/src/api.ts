@@ -93,10 +93,16 @@ export interface Employer {
   employer: string; deposits: number; first: string; last: string; active: boolean
   frequency: string | null; typical_paycheck: number; annualized: number | null; last_12_months: number
   accounts: string[]; history: { date: string; amount: number }[]
+  bonuses: { date: string; total: number; bonus: number }[]
+}
+export interface PayPeriod {
+  effective: string; gross_annual: number; net_per_paycheck: number
+  retirement_pct: number; employer_match_pct: number; pay_frequency: string
 }
 export interface IncomeSettings {
   gross_annual?: number; net_per_paycheck?: number; retirement_pct?: number; employer_match_pct?: number
   pay_frequency?: string; employer?: string; match_notes?: string; notes?: string; annual_net?: number
+  effective?: string
 }
 type PayLines = { gross: number; retirement: number; taxes_and_other: number; take_home: number; employer_match: number }
 export interface IncomeCheck {
@@ -105,6 +111,7 @@ export interface IncomeCheck {
   ytd: { paychecks: number; take_home: number; expected_take_home?: number; gross?: number; retirement?: number; employer_match?: number }
   detected: Employer[]
   warning: string | null
+  history: PayPeriod[]
 }
 
 export interface Range { start?: string; end?: string; accounts?: string[] }

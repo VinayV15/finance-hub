@@ -259,31 +259,40 @@ def _pair_venmo_funding(txns, cls):
 
 
 def _check_pay_schedule(txns, cls):
-    """Paychecks land every 1-2 weeks on a fixed schedule. A payroll deposit with no other paycheck
-    7 or 14 days before/after it is off-schedule (reimbursement, bonus...). Tiny ones are bank test deposits."""
+    """Paychecks land on a fixed 1-2 week schedule (holidays can shift one by a few days).
+      - tiny payroll deposits are bank test deposits -> not counted
+      - a payday whose total is well above the usual paycheck -> paycheck + bonus
+      - a deposit well under the usual paycheck -> reimbursement (flagged for review)
+    A usual-size deposit a few days off schedule is still a paycheck (holiday shifts)."""
+    from statistics import median
     from analytics import _employer_key  # local import: analytics imports db only
     pay = [t for t in txns if cls[t["txn_id"]]["kind"] == "paycheck" and not cls[t["txn_id"]]["locked"]]
     for t in pay:
         if -t["amount"] < 5:
             cls[t["txn_id"]].update(flow="transfer", kind="test_deposit", category="Transfer", review=0,
                                     reason="tiny test deposit from payroll setup — not counted")
-    dates = defaultdict(set)
+    pay = [t for t in pay if cls[t["txn_id"]]["kind"] == "paycheck"]
+    days = defaultdict(lambda: defaultdict(list))  # employer -> date -> [txns] (split paychecks share a day)
     for t in pay:
-        if cls[t["txn_id"]]["kind"] == "paycheck":
-            dates[_employer_key(t["name"])].add(_d(t["date"]))
-    for t in pay:
-        c = cls[t["txn_id"]]
-        if c["kind"] != "paycheck":
-            continue
-        own = dates[_employer_key(t["name"])]
-        d = _d(t["date"])
-        if len(own) < 3:
+        days[_employer_key(t["name"])][_d(t["date"])].append(t)
+    for emp, by_day in days.items():
+        order = sorted(by_day)
+        if len(order) < 3:
             continue  # not enough history to know the schedule
-        on_schedule = any(abs((d - o).days - gap) <= 2 or abs((o - d).days - gap) <= 2
-                          for o in own if o != d for gap in (7, 14))
-        if not on_schedule:
-            c.update(flow="refund", kind="reimbursement", category="Reimbursements", review=1,
-                     reason="off-schedule deposit from your employer — reimbursement or bonus?")
+        totals = {d: -sum(t["amount"] for t in by_day[d]) for d in order}
+        for i, d in enumerate(order):
+            near = [totals[o] for o in order[max(0, i - 4):i + 5] if o != d]
+            typical = median(near)
+            total = totals[d]
+            on_schedule = any(abs(abs((d - o).days) - gap) <= 5 for o in order if o != d for gap in (7, 14))
+            for t in by_day[d]:
+                c = cls[t["txn_id"]]
+                if total > 1.5 * typical and total - typical >= 1000 and on_schedule:
+                    c.update(kind="paycheck_bonus", category="Paycheck + bonus",
+                             reason=f"about ${total - typical:,.0f} more than your usual ${typical:,.0f} paycheck — likely a bonus")
+                elif total < 0.6 * typical:
+                    c.update(flow="refund", kind="reimbursement", category="Reimbursements", review=1,
+                             reason="off-schedule deposit from your employer — reimbursement or bonus?")
 
 
 def run():
