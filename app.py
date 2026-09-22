@@ -132,7 +132,7 @@ def summary():
     return jsonify(
         net_worth=assets - debts, assets=assets, debts=debts, this_month=this_month, review_count=review,
         accounts=accounts, holdings=holdings, items=items,
-        last_sync=db.get_meta("last_sync"), env=plaid_sync.ENV,
+        last_sync=db.get_meta("last_sync"), env=plaid_sync.ENV, history_start=analytics.history_start(),
     )
 
 

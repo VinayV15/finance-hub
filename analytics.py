@@ -16,8 +16,16 @@ PERIODS = {
 }
 
 
+def history_start():
+    """Earliest date shown anywhere (older data is kept for transfer matching but hidden)."""
+    return db.get_meta("history_start")
+
+
 def _where(start=None, end=None, accounts=None, extra=""):
     sql, args = ["1=1"], []
+    floor = history_start()
+    if floor and (not start or start < floor):
+        start = floor
     if start:
         sql.append("t.date >= ?"); args.append(start)
     if end:
@@ -116,7 +124,7 @@ def data_coverage():
     with db.conn() as c:
         rows = c.execute("""SELECT a.account_id, a.institution, a.name, MIN(t.date) AS first, MAX(t.date) AS last,
             COUNT(t.txn_id) AS n FROM accounts a LEFT JOIN transactions t ON t.account_id=a.account_id
-            GROUP BY a.account_id ORDER BY first""").fetchall()
+            GROUP BY a.account_id ORDER BY first""").fetchall()  # true first date, so hidden history isn't a "gap"
     return [dict(r) for r in rows]
 
 
@@ -153,8 +161,8 @@ def detected_income():
     """Group paycheck deposits by employer. A paycheck split across accounts (same day) counts once."""
     with db.conn() as c:
         rows = [dict(r) for r in c.execute(f"""SELECT t.date, t.name, -t.amount AS amount, a.institution, k.kind
-            {_FROM} WHERE k.flow='income' AND k.kind IN ('paycheck','paycheck_bonus')
-            ORDER BY t.date""")]
+            {_FROM} WHERE k.flow='income' AND k.kind IN ('paycheck','paycheck_bonus') AND t.date >= ?
+            ORDER BY t.date""", (history_start() or "",))]
     by_emp = defaultdict(lambda: defaultdict(float))
     split = defaultdict(set)
     bonus_days = defaultdict(set)

@@ -11,7 +11,7 @@ yours might differ — so you can pin the model to the real balance from a Servi
 """
 import json
 import re
-from datetime import date
+from datetime import date, timedelta
 
 import db
 
@@ -112,50 +112,84 @@ def allocate(cfg, payments):
             left = round(left - take, 2)
             sched += take
         out.append({**p, "scheduled": round(sched, 2), "extra": round(max(left, 0), 2)})
-    paid_through = max([n for n, v in owed.items() if v <= 0.004], default=0)
+    out = _apply_checkpoint_gaps(cfg, out)
+    # Paid through = last due fully covered by the regular portions of your payments.
+    covered, paid_through = sum(a["scheduled"] for a in out), 0
+    while paid_through < cfg["term_months"] and covered >= scheduled_due(cfg, paid_through + 1) - 0.004:
+        covered -= scheduled_due(cfg, paid_through + 1)
+        paid_through += 1
     return out, paid_through
 
 
-def _checkpoint_on(cfg, d):
-    for c in cfg.get("checkpoints") or []:
-        if c["date"] == d:
-            return c["balance"]
-    return None
+def _extra_key(d):
+    """Extra principal paid on day d lowers the balance before the next due date's interest (the 1st)."""
+    return _add_months(date(d.year, d.month, 1), 1 if d.day > 1 else 0)
 
 
-def actual_schedule(cfg, planned_extra_monthly=0.0):
-    """Month by month from the first payment: real history up to today, then a projection.
-    Interest accrues at the note rate on the real balance; extra principal lowers it the day it's paid."""
-    alloc, paid_through = allocate(cfg, actual_payments(cfg))
+def _run(cfg, alloc, planned_extra_monthly=0.0, pin=True, today=None):
+    """Month-by-month balance. With pin=True, a statement checkpoint replaces the balance as of its date:
+    every payment on or before that date is already inside the statement number."""
     P, rate, term = cfg["original_amount"], cfg["note_rate"], cfg["term_months"]
     note_pi = round(_pmt(P, rate, term), 2)
     first = date.fromisoformat(cfg["first_payment"])
-    today = date.today()
-    extras_by_month = {}
-    for a in alloc:
-        if a["extra"] > 0:
-            # extra paid between due dates reduces the balance before the next due date's interest
-            d = date.fromisoformat(a["date"])
-            k = _add_months(date(d.year, d.month, 1), 1 if d.day > 1 else 0).isoformat()
-            extras_by_month[k] = extras_by_month.get(k, 0) + a["extra"]
-    checkpoints = sorted(cfg.get("checkpoints") or [], key=lambda c: c["date"])
+    today = today or date.today()
+    extras = [(date.fromisoformat(a["date"]), a["extra"]) for a in alloc if a["extra"] > 0]
+    checkpoints = sorted((date.fromisoformat(c["date"]), c["balance"]) for c in (cfg.get("checkpoints") or [])) if pin else []
+    pinned_through = date.min
     bal, rows, n = P, [], 0
-    while bal > 0.004 and n < term + 1:
+    while bal > 0.004 and n < term:
         n += 1
         due = _add_months(first, n - 1)
         future = due > today
-        extra = extras_by_month.get(due.isoformat(), 0.0) if not future else planned_extra_monthly
+        extra = planned_extra_monthly if future else sum(
+            amt for d, amt in extras if _extra_key(d) == due and d > pinned_through)
         bal = round(bal - extra, 2)
         interest = round(bal * rate / 1200, 2)
         principal = min(bal, round(note_pi - interest, 2))
         bal = round(bal - principal, 2)
-        # Pin to a real statement balance if you gave one for this month.
-        for c in checkpoints:
-            if _add_months(date.fromisoformat(c["date"]).replace(day=1), 0) == due.replace(day=1):
-                bal = c["balance"]
+        nxt = _add_months(first, n)
+        for cd, cb in checkpoints:
+            if due <= cd < nxt:  # statement falls in this payment cycle
+                bal, pinned_through = cb, cd
         rows.append({"n": n, "date": due.isoformat(), "principal": round(principal, 2), "interest": interest,
                      "extra": round(extra, 2), "balance": max(bal, 0.0), "projected": future})
-    return rows, alloc, paid_through
+    return rows
+
+
+def _model_balance_on(cfg, alloc, day):
+    """Balance the model expects on `day` from payments alone (ignoring statements)."""
+    rows = _run(cfg, alloc, pin=False, today=day)
+    past = [r for r in rows if date.fromisoformat(r["date"]) <= day]
+    bal = past[-1]["balance"] if past else cfg["original_amount"]
+    last_due = date.fromisoformat(past[-1]["date"]) if past else date.min
+    # extra paid after the last due date (and by `day`) hasn't been applied in the monthly rows yet
+    return round(bal - sum(a["extra"] for a in alloc
+                           if a["extra"] > 0 and date.fromisoformat(a["date"]) <= day
+                           and _extra_key(date.fromisoformat(a["date"])) > last_due), 2)
+
+
+def _apply_checkpoint_gaps(cfg, alloc):
+    """If a statement shows less principal than the model expects, the servicer counted more of your money
+    as extra principal. Reassign that gap to the newest payments on or before the statement date."""
+    for cp in sorted(cfg.get("checkpoints") or [], key=lambda c: c["date"]):
+        day = date.fromisoformat(cp["date"])
+        gap = round(_model_balance_on(cfg, alloc, day) - cp["balance"], 2)
+        for a in sorted((a for a in alloc if date.fromisoformat(a["date"]) <= day), key=lambda a: a["date"], reverse=True):
+            if gap <= 0.004:
+                break
+            move = min(gap, a["scheduled"])
+            a["scheduled"] = round(a["scheduled"] - move, 2)
+            a["extra"] = round(a["extra"] + move, 2)
+            a["from_statement"] = True
+            gap = round(gap - move, 2)
+    return alloc
+
+
+def actual_schedule(cfg, planned_extra_monthly=0.0):
+    """Real history up to today (pinned to any statement balances), then a projection.
+    Interest accrues at the note rate on the real balance."""
+    alloc, paid_through = allocate(cfg, actual_payments(cfg))
+    return _run(cfg, alloc, planned_extra_monthly), alloc, paid_through
 
 
 def summary(planned_extra_monthly=0.0):
