@@ -37,26 +37,35 @@ def _where(start=None, end=None, accounts=None, extra=""):
     return " AND ".join(sql), args
 
 
-# Money into an investment account = invested. Count it once: the bank side if we have it, otherwise
-# the investment-account side when its bank half is missing.
-_INVESTED = """CASE
-    WHEN k.kind='invest_contribution' AND a.type!='investment' AND t.amount>0 THEN t.amount
-    WHEN k.kind='invest_contribution' AND a.type='investment' AND t.amount<0 AND k.pair_id IS NULL THEN -t.amount
-    WHEN k.kind='invest_withdrawal' AND a.type!='investment' AND t.amount<0 THEN t.amount
-    WHEN k.kind='invest_withdrawal' AND a.type='investment' AND t.amount>0 AND k.pair_id IS NULL THEN -t.amount
+# Money into an investment account = invested. Counted once, on the investment account's side (every
+# deposit into Robinhood shows up there), and moves between two of your investment accounts (e.g.
+# brokerage -> Roth) don't count as new investing. Bank-side rows only count when no investment account
+# received them (an investment account that isn't linked).
+_INV_EXTERNAL = "COALESCE(ap.type, '') != 'investment'"
+_INVESTED = f"""CASE
+    WHEN k.kind='invest_contribution' AND a.type='investment' AND t.amount<0 AND {_INV_EXTERNAL} THEN -t.amount
+    WHEN k.kind='invest_withdrawal' AND a.type='investment' AND t.amount>0 AND {_INV_EXTERNAL} THEN -t.amount
+    WHEN k.kind='invest_contribution' AND a.type!='investment' AND t.amount>0 AND k.pair_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM accounts x WHERE x.type='investment') THEN t.amount
     ELSE 0 END"""
+# Roth contributions count every deposit into the Roth, including moves from your own brokerage account.
+_INVESTED_ROTH = """CASE WHEN lower(COALESCE(a.subtype,'')) LIKE '%roth%' AND k.kind='invest_contribution'
+    AND t.amount<0 THEN -t.amount ELSE 0 END"""
 
 _SELECT_TOTALS = f"""
     ROUND(SUM(CASE WHEN k.flow='income' THEN -t.amount ELSE 0 END), 2) AS income,
     ROUND(SUM(CASE WHEN k.flow='spend' THEN t.amount - COALESCE(m.extra, 0) ELSE 0 END), 2) AS spend_gross,
     ROUND(SUM(CASE WHEN k.flow='refund' THEN -t.amount ELSE 0 END), 2) AS refunds,
     ROUND(SUM({_INVESTED}), 2) AS invested,
+    ROUND(SUM({_INVESTED_ROTH}), 2) AS invested_roth,
+    ROUND(SUM(CASE WHEN lower(COALESCE(a.subtype,'')) LIKE '%roth%' THEN 0 ELSE {_INVESTED} END), 2) AS invested_other,
     ROUND(SUM(COALESCE(m.extra, 0)), 2) AS extra_principal,
     ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS growth,
     ROUND(SUM(CASE WHEN k.kind IN ('paycheck','paycheck_bonus') THEN -t.amount ELSE 0 END), 2) AS paychecks"""
 
 _FROM = """FROM transactions t JOIN txn_class k USING(txn_id) LEFT JOIN accounts a ON a.account_id=t.account_id
-    LEFT JOIN mortgage_alloc m ON m.txn_id=t.txn_id"""
+    LEFT JOIN mortgage_alloc m ON m.txn_id=t.txn_id
+    LEFT JOIN transactions tp ON tp.txn_id=k.pair_id LEFT JOIN accounts ap ON ap.account_id=tp.account_id"""
 
 # Spending amount of a row: extra mortgage principal is saving (it becomes equity), not spending.
 _SPEND_AMT = "(t.amount - COALESCE(m.extra, 0))"
@@ -94,7 +103,7 @@ def by_category(start=None, end=None, accounts=None, flow="spend"):
     expr = _SPEND_AMT if flow == "spend" else "-t.amount"
     with db.conn() as c:
         rows = c.execute(f"""SELECT k.category, ROUND(SUM({expr}), 2) AS amount, COUNT(*) AS n
-            {_FROM} WHERE {where} GROUP BY k.category HAVING amount != 0 ORDER BY amount DESC""", args).fetchall()
+            {_FROM} WHERE {where} GROUP BY k.category HAVING SUM({expr}) != 0 ORDER BY 2 DESC""", args).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -113,8 +122,9 @@ def by_account(start=None, end=None):
 def top_merchants(start=None, end=None, accounts=None, limit=15):
     where, args = _where(start, end, accounts, "k.flow IN ('spend','refund')")
     with db.conn() as c:
-        rows = c.execute(f"""SELECT t.name, ROUND(SUM({_SPEND_AMT}),2) AS amount, COUNT(*) AS n
-            {_FROM} WHERE {where} GROUP BY lower(t.name) HAVING amount > 0 ORDER BY amount DESC LIMIT ?""",
+        rows = c.execute(f"""SELECT t.name, ROUND(SUM({_SPEND_AMT}),2) AS amount, COUNT(*) AS n,
+            ROUND(SUM(t.amount),2) AS paid, ROUND(SUM(COALESCE(m.extra,0)),2) AS extra_principal
+            {_FROM} WHERE {where} GROUP BY lower(t.name) HAVING SUM({_SPEND_AMT}) > 0 ORDER BY 2 DESC LIMIT ?""",
                          args + [limit]).fetchall()
     return [dict(r) for r in rows]
 

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { qs, type Txn } from '../api'
+import { qs, type Txn, type TxnTotals } from '../api'
 import { Filters } from '../components/Filters'
 import { TxnDrawer, TxnRow } from '../components/Txns'
-import { FLOW_LABEL } from '../format'
+import { FLOW_LABEL, money } from '../format'
 import { useFetch, useRange, useSummary } from '../hooks'
 
 const PAGE = 100
@@ -14,16 +14,21 @@ export function Transactions({ reviewOnly = false }: { reviewOnly?: boolean }) {
   const { reload: reloadSummary } = useSummary()
   const [q, setQ] = useState(params.get('q') || '')
   const [debounced, setDebounced] = useState(q)
-  const flow = params.get('flow') || ''
+  const flow = params.get('flows') || params.get('flow') || ''
   const category = params.get('category') || ''
+  const name = params.get('name') || ''
+  const invested = params.get('invested') || ''
   const [limit, setLimit] = useState(PAGE)
   const [open, setOpen] = useState<Txn | null>(null)
   useEffect(() => { const h = setTimeout(() => setDebounced(q), 250); return () => clearTimeout(h) }, [q])
 
   const path = `/api/transactions${qs(reviewOnly
     ? { review: 1, limit }
-    : { start: r.start, end: r.end, accounts: r.accounts, flow, category, q: debounced, limit })}`
-  const { data, reload } = useFetch<{ total: number; rows: Txn[] }>(path)
+    : { start: r.start, end: r.end, accounts: r.accounts, flows: flow, category, name, invested, q: debounced, limit })}`
+  const { data, reload } = useFetch<{ total: number; totals: TxnTotals; rows: Txn[] }>(path)
+  const t = data?.totals
+  const isSpend = flow === 'spend,refund' || flow === 'spend'
+  const flowLabel = flow === 'spend,refund' ? 'Spending (incl. money back)' : FLOW_LABEL[flow] || flow
   const setParam = (k: string, v: string) => { const p = new URLSearchParams(params); if (v) p.set(k, v); else p.delete(k); setParams(p) }
 
   return (
@@ -40,13 +45,26 @@ export function Transactions({ reviewOnly = false }: { reviewOnly?: boolean }) {
           <div className="filters">
             <input className="input" style={{ maxWidth: 280 }} placeholder="Search name or category…" value={q}
                    onChange={(e) => { setQ(e.target.value); setParam('q', e.target.value) }} />
-            <select className="input" style={{ width: 160 }} value={flow} onChange={(e) => setParam('flow', e.target.value)} aria-label="Type">
+            <select className="input" style={{ width: 200 }} value={flow} onChange={(e) => { const p = new URLSearchParams(params); p.delete('flow'); if (e.target.value) p.set('flows', e.target.value); else p.delete('flows'); setParams(p) }} aria-label="Type">
               <option value="">All types</option>
+              <option value="spend,refund">Spending (incl. money back)</option>
               {Object.entries(FLOW_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
             {category && <span className="badge">{category} <button className="link-btn" onClick={() => setParam('category', '')} aria-label="Clear category">✕</button></span>}
-            {data && <span className="muted small">{data.total.toLocaleString()} transactions</span>}
+            {name && <span className="badge">{name} <button className="link-btn" onClick={() => setParam('name', '')} aria-label="Clear merchant">✕</button></span>}
+            {invested && <span className="badge">Invested <button className="link-btn" onClick={() => setParam('invested', '')} aria-label="Clear invested">✕</button></span>}
           </div>
+          {t && (
+            <div className="note" style={{ marginBottom: 12, display: 'flex', gap: '4px 14px', flexWrap: 'wrap' }}>
+              <span><b>{t.n.toLocaleString()}</b> transactions{flow ? ` · ${flowLabel}` : ''}</span>
+              {invested ? <span>Invested: <b>{money(t.invested)}</b></span> : <>
+                <span>Money out <b>{money(t.money_out)}</b></span>
+                <span>Money in <b>{money(t.money_in)}</b></span>
+                {isSpend && <span>Counted as spending: <b>{money(t.net_spend)}</b></span>}
+                {t.extra_principal > 0 && <span>{money(t.extra_principal)} of it is extra mortgage principal, counted as saving</span>}
+              </>}
+            </div>
+          )}
         </>
       )}
       <div className="card">

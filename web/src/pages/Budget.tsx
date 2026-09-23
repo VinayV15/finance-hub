@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { post, put, qs, type BudgetMonth, type BudgetRow } from '../api'
 import { money, periodLabel } from '../format'
-import { useFetch, useToast } from '../hooks'
+import { useFetch, useRange, useToast } from '../hooks'
 
 const shiftMonth = (m: string, n: number) => {
   const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1 + n, 1)
@@ -16,7 +17,7 @@ const STATUS = {
 } as const
 
 /** One category: spent vs. limit, with a tick showing where you'd be if you spent evenly all month. */
-function Bar({ r, pace, onEdit }: { r: BudgetRow; pace: number; onEdit: (v: string) => void }) {
+function Bar({ r, pace, onEdit, onOpen }: { r: BudgetRow; pace: number; onEdit: (v: string) => void; onOpen: () => void }) {
   const [val, setVal] = useState(r.budget != null ? String(r.budget) : '')
   useEffect(() => setVal(r.budget != null ? String(r.budget) : ''), [r.budget])
   const b = r.budget || 0
@@ -26,7 +27,7 @@ function Bar({ r, pace, onEdit }: { r: BudgetRow; pace: number; onEdit: (v: stri
   return (
     <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <div className="row-main" style={{ minWidth: 180 }}>
-        <div className="row-title">{r.category}</div>
+        <button className="row-title link-btn" style={{ padding: 0, fontSize: 15, color: 'var(--text)', textAlign: 'left' }} onClick={onOpen} title="See these transactions">{r.category} ›</button>
         <div className="small muted">
           {b ? <>{money(r.spent, { cents: false })} of {money(b, { cents: false })} · {r.left! >= 0 ? `${money(r.left, { cents: false })} left` : `${money(-r.left!, { cents: false })} over`}</>
             : <>{money(r.spent, { cents: false })} spent · no budget{r.suggested ? ` (suggested ${money(r.suggested, { cents: false })})` : ''}</>}
@@ -54,6 +55,15 @@ export function Budget() {
   const toast = useToast()
   const [month, setMonth] = useState(thisMonth())
   const { data, reload } = useFetch<BudgetMonth>(`/api/budget${qs({ month })}`)
+  const nav = useNavigate()
+  const range = useRange()
+  const open = (category: string) => {
+    const [y, m] = month.split('-').map(Number)
+    const end = new Date(y, m, 0).getDate()
+    range.setAccounts([])
+    range.setCustom(`${month}-01`, `${month}-${String(end).padStart(2, '0')}`)
+    nav(`/transactions${qs({ category, flows: 'spend,refund' })}`)
+  }
   const save = async (category: string, value: string) => {
     try { await put(`/api/budget${qs({ month })}`, { [category]: value.trim() }); reload(); toast(value.trim() ? `${category} set to $${value}.` : `${category} budget removed.`) }
     catch (e) { toast((e as Error).message, true) }
@@ -107,14 +117,14 @@ export function Budget() {
       ) : (
         <div className="card">
           <div className="group-head"><h2>Your budgets</h2><span className="muted small">the tick shows where even spending would put you today</span></div>
-          {budgeted.map((r) => <Bar key={r.category} r={r} pace={isCurrent ? data.pace : 1} onEdit={(v) => save(r.category, v)} />)}
+          {budgeted.map((r) => <Bar key={r.category} r={r} pace={isCurrent ? data.pace : 1} onEdit={(v) => save(r.category, v)} onOpen={() => open(r.category)} />)}
         </div>
       )}
 
       {unbudgeted.length > 0 && (
         <div className="card section">
           <div className="group-head"><h2>No budget yet</h2>{budgeted.length > 0 && unbudgeted.some((r) => r.suggested) && <button className="btn small" onClick={fill}>Fill suggestions</button>}</div>
-          {unbudgeted.map((r) => <Bar key={r.category} r={r} pace={isCurrent ? data.pace : 1} onEdit={(v) => save(r.category, v)} />)}
+          {unbudgeted.map((r) => <Bar key={r.category} r={r} pace={isCurrent ? data.pace : 1} onEdit={(v) => save(r.category, v)} onOpen={() => open(r.category)} />)}
         </div>
       )}
     </>

@@ -30,6 +30,7 @@ export function TxnRow({ t, onClick }: { t: Txn; onClick: () => void }) {
           <span className={`badge ${t.flow}`}>{FLOW_LABEL[t.flow]}</span>
           <span>{t.category}</span>
           {t.review ? <span className="badge warn">⚠ check</span> : null}
+          {t.extra_principal > 0 && <span style={{ color: 'var(--s-invest)' }}>{money(t.amount - t.extra_principal)} regular + {money(t.extra_principal)} extra principal (saving)</span>}
         </div>
       </div>
       <div className={`row-amt ${t.flow === 'transfer' || t.flow === 'ignore' ? 'muted' : out ? '' : 'pos'}`} style={t.flow === 'ignore' ? { textDecoration: 'line-through' } : undefined}>{out ? '−' : '+'}{money(Math.abs(t.amount))}</div>

@@ -48,6 +48,9 @@ export interface Totals {
   growth: number
   paychecks: number
   retirement?: number
+  invested_roth?: number
+  invested_other?: number
+  extra_principal?: number
 }
 
 export interface Summary {
@@ -79,7 +82,9 @@ export interface Txn {
   reason: string
   pair_id: string | null
   note: string | null
+  extra_principal: number
 }
+export interface TxnTotals { n: number; money_out: number; money_in: number; net_spend: number; extra_principal: number; invested: number }
 
 export interface CategoryRow { category: string; amount: number; n: number }
 export interface AccountFlow extends Totals {

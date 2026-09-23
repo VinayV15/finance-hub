@@ -19,6 +19,7 @@ from datetime import date
 import db
 
 PAIR_WINDOW_DAYS = 5
+INVEST_PAIR_WINDOW_DAYS = 10
 
 # Plaid primary category -> friendly category name.
 CATEGORY_NAMES = {
@@ -227,7 +228,9 @@ def _pair_transfers(txns, cls):
              if o["account_id"] != i["account_id"]),
             key=lambda x: x[0])
         for gap, o, i in candidates:
-            if gap > PAIR_WINDOW_DAYS or o["txn_id"] in used or i["txn_id"] in used:
+            # Brokerage deposits can post a week+ after the bank sends them.
+            window = INVEST_PAIR_WINDOW_DAYS if "investment" in (o["acct_type"], i["acct_type"]) else PAIR_WINDOW_DAYS
+            if gap > window or o["txn_id"] in used or i["txn_id"] in used:
                 continue
             used.update((o["txn_id"], i["txn_id"]))
             oc, ic = cls[o["txn_id"]], cls[i["txn_id"]]

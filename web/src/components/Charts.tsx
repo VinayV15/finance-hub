@@ -86,7 +86,7 @@ export function CashflowChart({ periods, height = 300 }: { periods: Period[]; he
 
 /** Ranked horizontal bars (one hue — magnitude, not identity). */
 export function HBarList({ rows, onPick, limit = 12 }: {
-  rows: { label: string; amount: number; sub?: string }[]; onPick?: (label: string) => void; limit?: number
+  rows: { label: string; amount: number; note?: string }[]; onPick?: (label: string) => void; limit?: number
 }) {
   const [all, setAll] = useState(false)
   const shown = all ? rows : rows.slice(0, limit)
@@ -101,6 +101,7 @@ export function HBarList({ rows, onPick, limit = 12 }: {
           <span className="name">{r.label}</span>
           <div className="track"><div className="fill" style={{ width: `${(Math.abs(r.amount) / max) * 100}%` }} /></div>
           <span className="num small">{money(r.amount, { cents: false })}<span className="muted"> · {pct(total ? r.amount / total : 0)}</span></span>
+          {r.note && <span className="small muted" style={{ gridColumn: '1 / -1', marginTop: -4 }}>{r.note}</span>}
         </div>
       ))}
       {rows.length > limit && <button className="link-btn" onClick={() => setAll(!all)}>{all ? 'Show less' : `Show all ${rows.length}`}</button>}

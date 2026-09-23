@@ -263,29 +263,41 @@ FLOWS = {"spend", "income", "refund", "transfer", "growth", "ignore"}
 @app.route("/api/transactions")
 @login_required
 def api_transactions():
+    """List transactions. Totals use the exact same math as the dashboards, so a drill-down always adds up
+    to the number you clicked."""
     a = request.args
     where, args = analytics._where(a.get("start"), a.get("end"),
                                    [x for x in a.get("accounts", "").split(",") if x] or None)
-    if a.get("flow"):
-        where += " AND k.flow = ?"; args.append(a["flow"])
+    flows = [f for f in (a.get("flows") or a.get("flow") or "").split(",") if f]
+    if flows:
+        where += f" AND k.flow IN ({','.join('?' * len(flows))})"; args += flows
     if a.get("category"):
         where += " AND k.category = ?"; args.append(a["category"])
+    if a.get("name"):  # exact merchant (case-insensitive), as grouped on the dashboard
+        where += " AND lower(t.name) = ?"; args.append(a["name"].lower())
     if a.get("review") == "1":
         where += " AND k.review = 1"
+    if a.get("invested") == "1":  # exactly the rows behind the dashboard's Invested number
+        where += f" AND ({analytics._INVESTED}) != 0"
     if a.get("q"):
         where += " AND (lower(t.name) LIKE ? OR lower(k.category) LIKE ?)"
         args += [f"%{a['q'].lower()}%"] * 2
     limit = min(int(a.get("limit", 200)), 2000)
     offset = int(a.get("offset", 0))
     with db.conn() as c:
-        total = c.execute(f"SELECT COUNT(*) {analytics._FROM} WHERE {where}", args).fetchone()[0]
+        t = dict(c.execute(f"""SELECT COUNT(*) AS n,
+                COALESCE(ROUND(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 2), 0) AS money_out,
+                COALESCE(ROUND(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 2), 0) AS money_in,
+                COALESCE(ROUND(SUM(CASE WHEN k.flow='spend' THEN {analytics._SPEND_AMT} WHEN k.flow='refund' THEN t.amount ELSE 0 END), 2), 0) AS net_spend,
+                COALESCE(ROUND(SUM(COALESCE(m.extra, 0)), 2), 0) AS extra_principal,
+                COALESCE(ROUND(SUM({analytics._INVESTED}), 2), 0) AS invested
+                {analytics._FROM} WHERE {where}""", args).fetchone())
         rows = [dict(r) for r in c.execute(f"""SELECT t.txn_id, t.date, t.name, t.amount, t.pending, t.account_id,
                 a.institution, a.name AS account_name, k.flow, k.kind, k.category, k.review, k.reason, k.pair_id,
-                o.note FROM transactions t JOIN txn_class k USING(txn_id)
-                LEFT JOIN accounts a ON a.account_id=t.account_id
-                LEFT JOIN txn_overrides o ON o.txn_id=t.txn_id
+                o.note, COALESCE(m.extra, 0) AS extra_principal
+                {analytics._FROM} LEFT JOIN txn_overrides o ON o.txn_id=t.txn_id
                 WHERE {where} ORDER BY t.date DESC, t.txn_id LIMIT ? OFFSET ?""", args + [limit, offset])]
-    return jsonify(total=total, rows=rows)
+    return jsonify(total=t["n"], totals=t, rows=rows)
 
 
 @app.route("/api/transactions/<txn_id>", methods=["PATCH"])
