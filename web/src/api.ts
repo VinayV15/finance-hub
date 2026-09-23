@@ -169,3 +169,27 @@ export interface Mortgage {
   actual: MortgageRow[]
   years: { year: string; principal: number; interest: number; extra: number; end_balance: number }[]
 }
+
+export interface BudgetRow {
+  category: string; budget: number | null; spent: number; left: number | null
+  suggested: number | null; avg6: number | null; history: { month: string; amount: number }[]
+  status: 'ok' | 'ahead_of_pace' | 'over' | null
+}
+export interface BudgetMonth {
+  month: string; pace: number; days: number; elapsed: number; rows: BudgetRow[]
+  total_budget: number; budgeted_spent: number; unbudgeted_spent: number; money_back: number; net_spent: number
+  take_home: number | null; left_after_budget: number | null
+}
+export type GoalType = 'emergency' | 'roth' | 'investing' | 'mortgage' | 'custom'
+export interface Goal {
+  id: string; type: GoalType; name: string; target: number | null; target_date: string | null
+  config: { months?: number; accounts?: string[]; kind?: 'pmi' | 'payoff'; starting?: number }
+  progress: { current: number; target: number | null; pct?: number | null; remaining?: number; detail: string
+    monthly_needed: number | null; on_track: boolean | null; projected_date?: string }
+}
+export interface Windfall {
+  id: string; txn_id: string | null; date: string; label: string; amount: number; source: string
+  status: string; plan: { target: string; amount: number }[] | null
+  suggested: { target: string; label: string; pct: number; amount: number }[]
+}
+export interface Windfalls { split: { target: string; pct: number }[]; items: Windfall[] }

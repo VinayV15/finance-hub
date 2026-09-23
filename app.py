@@ -23,6 +23,7 @@ import classify  # noqa: E402
 import db  # noqa: E402
 import manual  # noqa: E402
 import mortgage  # noqa: E402
+import planning  # noqa: E402
 import plaid_sync  # noqa: E402
 import statements  # noqa: E402
 
@@ -470,6 +471,124 @@ def api_mortgage_checkpoint_delete(d):
     return jsonify(mortgage.summary())
 
 
+# ---------- budgets, goals, windfalls ----------
+
+@app.route("/api/budget")
+@login_required
+def api_budget():
+    return jsonify(planning.budget_month(request.args.get("month") or None))
+
+
+@app.route("/api/budget", methods=["PUT"])
+@login_required
+def api_budget_set():
+    b = request.get_json() or {}
+    try:
+        values = {k: (None if v in (None, "") else float(str(v).replace(",", "").replace("$", ""))) for k, v in b.items()}
+    except ValueError:
+        return jsonify(error="Budgets must be numbers."), 400
+    planning.set_budgets(values)
+    return jsonify(planning.budget_month(request.args.get("month") or None))
+
+
+@app.route("/api/budget/suggest", methods=["POST"])
+@login_required
+def api_budget_suggest():
+    """Fill every category that has no budget yet with its suggested amount."""
+    current = planning.get_budgets()
+    planning.set_budgets({k: v["suggested"] for k, v in planning.suggestions().items() if k not in current})
+    return jsonify(planning.budget_month(request.args.get("month") or None))
+
+
+GOAL_TYPES = {"emergency", "roth", "investing", "mortgage", "custom"}
+
+
+@app.route("/api/goals")
+@login_required
+def api_goals():
+    return jsonify(planning.goals_with_progress())
+
+
+@app.route("/api/goals", methods=["POST"])
+@login_required
+def api_goal_save():
+    b = request.get_json() or {}
+    if b.get("type") not in GOAL_TYPES or not (b.get("name") or "").strip():
+        return jsonify(error="Pick a goal type and give it a name."), 400
+    try:
+        target = float(str(b["target"]).replace(",", "").replace("$", "")) if str(b.get("target") or "").strip() else None
+        if b.get("target_date"):
+            date.fromisoformat(b["target_date"])
+    except ValueError:
+        return jsonify(error="Target must be a number and the date must be valid."), 400
+    if b["type"] in ("roth", "investing", "custom") and not target:
+        return jsonify(error="This goal needs a target amount."), 400
+    planning.save_goal({"id": b.get("id"), "type": b["type"], "name": b["name"].strip(), "target": target,
+                        "target_date": b.get("target_date"), "config": b.get("config") or {}})
+    return jsonify(planning.goals_with_progress())
+
+
+@app.route("/api/goals/<gid>", methods=["DELETE"])
+@login_required
+def api_goal_archive(gid):
+    planning.archive_goal(gid)
+    return jsonify(planning.goals_with_progress())
+
+
+@app.route("/api/goals/<gid>/contribute", methods=["POST"])
+@login_required
+def api_goal_contribute(gid):
+    b = request.get_json() or {}
+    try:
+        amt = float(str(b.get("amount")).replace(",", "").replace("$", ""))
+    except ValueError:
+        return jsonify(error="Amount must be a number."), 400
+    planning.add_contribution(gid, amt, b.get("date"), b.get("note"))
+    return jsonify(planning.goals_with_progress())
+
+
+@app.route("/api/windfalls")
+@login_required
+def api_windfalls():
+    return jsonify(planning.windfalls())
+
+
+@app.route("/api/windfalls/split", methods=["PUT"])
+@login_required
+def api_windfall_split():
+    split = (request.get_json() or {}).get("split") or []
+    try:
+        split = [{"target": s["target"], "pct": float(s["pct"])} for s in split if float(s.get("pct") or 0) > 0]
+    except (KeyError, ValueError):
+        return jsonify(error="Each part needs a goal and a percent."), 400
+    if abs(sum(s["pct"] for s in split) - 100) > 0.5:
+        return jsonify(error="The split has to add up to 100%."), 400
+    db.set_json("windfall_split", split)
+    return jsonify(planning.windfalls())
+
+
+@app.route("/api/windfalls/<wid>/plan", methods=["POST"])
+@login_required
+def api_windfall_plan(wid):
+    plan = (request.get_json() or {}).get("plan") or []
+    planning.plan_windfall(wid, plan)
+    return jsonify(planning.windfalls())
+
+
+@app.route("/api/windfalls/<wid>", methods=["DELETE"])
+@login_required
+def api_windfall_dismiss(wid):
+    planning.dismiss_windfall(wid)
+    return jsonify(planning.windfalls())
+
+
+@app.route("/api/transactions/<txn_id>/windfall", methods=["POST"])
+@login_required
+def api_mark_windfall(txn_id):
+    planning.mark_windfall(txn_id, (request.get_json() or {}).get("label"))
+    return jsonify(ok=True)
+
+
 # ---------- daily background refresh ----------
 
 def _auto_sync_loop():
@@ -497,6 +616,7 @@ def _lan_ip():
 
 if __name__ == "__main__":
     db.init()
+    planning.init()
     threading.Thread(target=_auto_sync_loop, daemon=True).start()
     port = int(os.environ.get("PORT", "8750"))
     host = os.environ.get("HOST", "0.0.0.0")
