@@ -719,6 +719,12 @@ def api_projection():
     return jsonify(insights.projection_inputs())
 
 
+@app.route("/api/recap")
+@login_required
+def api_recap():
+    return jsonify(insights.recap(request.args.get("month")))
+
+
 @app.route("/api/alerts")
 @login_required
 def api_alerts():

@@ -466,3 +466,89 @@ def projection_inputs():
         "mortgage_by_year": sched,
         "months_used": months,
     }
+
+
+# ---------- monthly recap ----------
+
+def recap_months():
+    floor = analytics.history_start() or "0000"
+    with db.conn() as c:
+        return [r[0] for r in c.execute("SELECT DISTINCT substr(date,1,7) FROM transactions WHERE date >= ? ORDER BY 1 DESC", (floor,))]
+
+
+def recap(month=None):
+    """One month in review: the totals vs. last month and your usual, where it went, what stood out."""
+    today = date.today()
+    month = month or (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")  # last full month by default
+    start, end = planning._month_bounds(month)
+    prev = planning._last_full_months(1, before=date.fromisoformat(start))[0]
+    ps, pe = planning._month_bounds(prev)
+    six = planning._last_full_months(6, before=date.fromisoformat(start))
+    tot = analytics.cashflow(start, end)["total"]
+    ptot = analytics.cashflow(ps, pe)["total"]
+    hist_tot = [analytics.cashflow(*planning._month_bounds(m))["total"] for m in six]
+    avg = lambda k: round(statistics.mean([h[k] or 0 for h in hist_tot]), 2) if hist_tot else None
+
+    cats = {r["category"]: r["amount"] for r in analytics.by_category(start, end)}
+    pcats = {r["category"]: r["amount"] for r in analytics.by_category(ps, pe)}
+    hist = planning.category_history(six)
+    categories = []
+    for cat, amt in sorted(cats.items(), key=lambda kv: -kv[1]):
+        usual = [v for v in (hist.get(cat) or {}).values()]
+        med = statistics.median(usual + [0] * (len(six) - len(usual))) if six else None
+        categories.append({"category": cat, "amount": round(amt, 2), "prev": round(pcats.get(cat, 0), 2),
+                           "usual": round(med, 2) if med is not None else None})
+
+    where, args = analytics._where(start, end, None, "k.flow='spend'")
+    year_ago = (date.fromisoformat(start) - timedelta(days=365)).isoformat()
+    with db.conn() as c:
+        biggest = [dict(r) for r in c.execute(f"""SELECT t.txn_id, t.date, t.name, t.amount, k.category {analytics._FROM}
+            WHERE {where} AND k.kind != 'mortgage' ORDER BY t.amount DESC LIMIT 5""", args)]
+        new = [dict(r) for r in c.execute(f"""SELECT MIN(t.name) AS name, ROUND(SUM(t.amount),2) AS amount, COUNT(*) AS n, MIN(k.category) AS category
+            {analytics._FROM} WHERE {where} AND lower(t.name) NOT IN (
+                SELECT lower(t2.name) FROM transactions t2 WHERE t2.date >= ? AND t2.date < ?)
+            GROUP BY lower(t.name) ORDER BY 2 DESC LIMIT 6""", args + [year_ago, start])]
+        daily = [dict(r) for r in c.execute(f"""SELECT t.date, ROUND(SUM(CASE WHEN k.flow='spend' THEN {analytics._SPEND_AMT}
+                WHEN k.flow='refund' THEN t.amount ELSE 0 END),2) AS amount
+            {analytics._FROM} WHERE {analytics._where(start, end)[0]} GROUP BY t.date ORDER BY t.date""", analytics._where(start, end)[1])]
+    bills = [r for r in recurring() if not r["dismissed"] and any(h["date"][:7] == month for h in r["history"])]
+    bills_total = round(sum(h["amount"] for r in bills for h in r["history"] if h["date"][:7] == month), 2)
+    bm = planning.budget_month(month)
+    budgeted = [r for r in bm["rows"] if r["budget"]]
+    nw = analytics.networth_history()["points"]
+    nw_start = next((p for p in reversed(nw) if p["date"] <= start), None)
+    nw_end = next((p for p in reversed(nw) if p["date"] <= end), None)
+
+    # Plain-language highlights, most notable first.
+    hl = []
+    if (tot["income"] or 0) >= 500 and avg("savings_rate") is not None and tot["savings_rate"] is not None:
+        rates = [h["savings_rate"] for h in hist_tot if h["savings_rate"] is not None and (h["income"] or 0) >= 500]
+        diff = tot["savings_rate"] - (statistics.mean(rates) if rates else tot["savings_rate"])
+        hl.append({"tone": "good" if diff >= 0 else "bad",
+                   "text": f"You kept {round(tot['savings_rate'] * 100)}% of your income, "
+                           f"{abs(round(diff * 100))} points {'above' if diff >= 0 else 'below'} your 6-month average."})
+    moves = [(c, c["amount"] - c["usual"]) for c in categories if c["usual"] is not None and c["amount"] > 0 and (c["usual"] or 0) > 40]
+    for c, d in sorted(moves, key=lambda x: -abs(x[1]))[:2]:
+        if abs(d) >= 50 and c["usual"]:
+            hl.append({"tone": "bad" if d > 0 else "good",
+                       "text": f"{c['category']}: ${c['amount']:,.0f}, {abs(round(d / c['usual'] * 100))}% {'more' if d > 0 else 'less'} than usual (${c['usual']:,.0f})."})
+    if tot["invested"] > 0:
+        hl.append({"tone": "good", "text": f"You moved ${tot['invested']:,.0f} into investments."})
+    over = [r for r in budgeted if r["status"] == "over"]
+    if budgeted:
+        hl.append({"tone": "good" if not over else "bad" if len(over) > len(budgeted) / 2 else "info",
+                   "text": f"{len(budgeted) - len(over)} of {len(budgeted)} budgets stayed on track" + (f"; over: {', '.join(r['category'] for r in over[:3])}." if over else ".")})
+    if new:
+        hl.append({"tone": "info", "text": f"{len(new)} new place{'s' if len(new) > 1 else ''} you hadn't paid in the past year, led by {new[0]['name']} (${new[0]['amount']:,.0f})."})
+
+    return {
+        "month": month, "prev_month": prev, "months": recap_months(), "partial": month == today.strftime("%Y-%m"),
+        "totals": {k: tot.get(k) for k in ("income", "spend", "saved", "savings_rate", "invested", "refunds", "paychecks")},
+        "prev": {k: ptot.get(k) for k in ("income", "spend", "saved", "savings_rate", "invested")},
+        "usual": {k: avg(k) for k in ("income", "spend", "saved", "invested")},
+        "categories": categories, "biggest": biggest, "new_merchants": new, "daily": daily,
+        "bills": {"count": len(bills), "total": bills_total},
+        "budgets": {"count": len(budgeted), "over": len(over)},
+        "net_worth": {"start": nw_start["net_worth"] if nw_start else None, "end": nw_end["net_worth"] if nw_end else None},
+        "highlights": hl,
+    }

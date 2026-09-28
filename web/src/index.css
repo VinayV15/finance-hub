@@ -469,3 +469,31 @@ button.hm-cell:hover { outline: 2px solid var(--text); outline-offset: 1px; }
 .slider input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 .slider input[type='range']::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); }
 .proj-big { font-family: var(--font-display); font-size: 40px; font-weight: 700; letter-spacing: -0.02em; margin: 4px 0; color: var(--good); }
+
+/* ---------- monthly recap ---------- */
+.recap-hero { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+.ring-stack { display: flex; flex-direction: column; align-items: center; line-height: 1.1; text-align: center; }
+.recap-stats { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px 20px; }
+.recap-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.recap-stats .label { font-size: 12.5px; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.recap-stats b { font-family: var(--font-display); font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.delta { font-size: 12.5px; font-weight: 650; color: var(--muted); }
+.delta.up { color: var(--good); }
+.delta.down { color: var(--bad); }
+.highlights { display: grid; gap: 8px; }
+.hl { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-sunk); border: 1px solid var(--line); font-weight: 600; }
+.hl-dot { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex: none; font-size: 13px; font-weight: 800; }
+.hl-good .hl-dot { background: color-mix(in srgb, var(--s-income) 25%, transparent); color: var(--good); }
+.hl-bad .hl-dot { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
+.hl-info .hl-dot { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.cmp-row { display: grid; grid-template-columns: minmax(90px, 150px) 1fr auto; gap: 12px; align-items: center; width: 100%; padding: 7px 0; background: none; border: 0; cursor: pointer; text-align: left; font-size: 13.5px; }
+.cmp-row:hover .cmp-name { text-decoration: underline; text-underline-offset: 3px; }
+.cmp-name { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-track { position: relative; height: 12px; background: var(--surface-sunk); border-radius: 999px; }
+.cmp-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; min-width: 4px; }
+.cmp-tick { position: absolute; top: -4px; bottom: -4px; width: 2.5px; border-radius: 2px; background: var(--text); transform: translateX(-50%); }
+.cmp-amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; min-width: 120px; }
+.recap-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.recap-mini > div { background: var(--surface-sunk); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; }
+.recap-mini b { font-family: var(--font-display); font-size: 20px; }
+.recap-mini span { font-size: 12px; color: var(--muted); }
