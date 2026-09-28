@@ -1,4 +1,6 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
+import { cloud, signOut, supabase } from './cloud'
+import { SignIn } from './pages/SignIn'
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { Icon } from './components/Icons'
 import { QuickSearch } from './components/Search'
@@ -72,7 +74,7 @@ function More() {
           </NavLink>
         ))}
         <ThemeToggle />
-        <a className="nav-link" href="/logout" style={{ padding: '12px 4px' }}><span className="nav-inline"><span className="nav-ico"><Icon name="lock" /></span>Lock</span></a>
+        <button className="nav-link" onClick={signOut} style={{ padding: '12px 4px' }}><span className="nav-inline"><span className="nav-ico"><Icon name="lock" /></span>{cloud ? 'Sign out' : 'Lock'}</span></button>
       </div>
     </>
   )
@@ -117,7 +119,7 @@ function Shell() {
         <Nav />
         <div className="spacer" />
         <ThemeToggle />
-        <a className="nav-link" href="/logout"><span className="nav-ico"><Icon name="lock" /></span><span className="nav-label">Lock</span></a>
+        <button className="nav-link" onClick={signOut}><span className="nav-ico"><Icon name="lock" /></span><span className="nav-label">{cloud ? 'Sign out' : 'Lock'}</span></button>
       </aside>
       <main className="main">
         <Routes>
@@ -144,9 +146,29 @@ function Shell() {
   )
 }
 
+/** Cloud mode: show the sign-in screen until there is a session (and again if it ends or is refused). */
+function useSignedIn() {
+  const [state, setState] = useState<'checking' | 'in' | 'out'>(cloud ? 'checking' : 'in')
+  useEffect(() => {
+    if (!supabase) return
+    supabase.auth.getSession().then(({ data }) => setState(data.session ? 'in' : 'out'))
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) setState('out')
+      else if (event === 'SIGNED_IN') setState((s) => (s === 'out' ? 'out' : 'in')) // SignIn decides when it's done (passkey step)
+    })
+    const refused = () => setState('out')
+    window.addEventListener('fh:signed-out', refused)
+    return () => { sub.subscription.unsubscribe(); window.removeEventListener('fh:signed-out', refused) }
+  }, [])
+  return [state, () => setState('in')] as const
+}
+
 export default function App() {
+  const [signedIn, done] = useSignedIn()
+  if (signedIn === 'checking') return <div className="empty" style={{ paddingTop: '30vh' }}>Loading…</div>
+  if (signedIn === 'out') return <SignIn onDone={done} />
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <ToastProvider>
         <SummaryProvider>
           <RangeProvider>

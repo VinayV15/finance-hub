@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { cloud } from '../cloud'
 import { Link, useNavigate } from 'react-router-dom'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { Account, Totals, Txn } from '../api'
@@ -68,7 +69,7 @@ export function Home() {
       <div className="page-head">
         <div>
           <h1>Overview</h1>
-          <div className="muted small">Refreshed {ago(s.last_sync)} · updates daily while the app runs</div>
+          <div className="muted small">Refreshed {ago(s.last_sync)} · updates daily{cloud ? '' : ' while the app runs'}</div>
         </div>
       </div>
 

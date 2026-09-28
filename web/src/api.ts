@@ -1,3 +1,5 @@
+import { accessToken, API_BASE, cloud } from './cloud'
+
 // Thin wrapper around the Flask API. Every call sends the session cookie; a 401 bounces to the PIN screen.
 
 export type Flow = 'spend' | 'income' | 'refund' | 'transfer' | 'growth' | 'ignore'
@@ -137,13 +139,13 @@ export interface Range { start?: string; end?: string; accounts?: string[] }
 
 export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const isForm = opts.body instanceof FormData
-  const r = await fetch(path, {
-    credentials: 'same-origin',
-    ...opts,
-    headers: isForm ? opts.headers : { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-  })
+  const token = cloud ? await accessToken() : null
+  const headers: Record<string, string> = { ...(isForm ? {} : { 'Content-Type': 'application/json' }), ...((opts.headers as Record<string, string>) || {}) }
+  if (token) headers.Authorization = `Bearer ${token}`
+  const r = await fetch(API_BASE + path, { credentials: cloud ? 'omit' : 'same-origin', ...opts, headers })
   if (r.status === 401) {
-    window.location.href = '/login'
+    if (cloud) window.dispatchEvent(new Event('fh:signed-out'))  // App shows the sign-in screen
+    else window.location.href = '/login'
     throw new Error('locked')
   }
   const body = await r.json().catch(() => ({}))

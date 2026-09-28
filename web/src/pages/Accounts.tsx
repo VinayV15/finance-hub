@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { cloud, supabase } from '../cloud'
+import { useEffect, useState } from 'react'
 import { api, del, post, type Rule } from '../api'
 import { FLOW_LABEL, ago, money } from '../format'
 import { useFetch, useSummary, useToast } from '../hooks'
@@ -118,7 +119,7 @@ export function Accounts() {
           </div>
         ))}
         <div className="note" style={{ marginTop: 12 }}>
-          Add a new login from your Mac's browser. {s.env === 'production' && <b>Each new login uses 1 of your 10 free Plaid links, forever ({s.items.length} used).</b>}
+          {cloud ? 'Linking a bank opens its sign-in in a pop-up; allow pop-ups if nothing appears.' : "Add a new login from your Mac's browser."} {s.env === 'production' && <b>Each new login uses 1 of your 10 free Plaid links, forever ({s.items.length} used).</b>}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
           <button className="btn primary" onClick={() => link('bank')}>+ Bank or credit card</button>
@@ -132,9 +133,11 @@ export function Accounts() {
           <h2>Import Venmo</h2>
           <p className="muted small" style={{ marginTop: -4 }}>Venmo app → Me → Settings → Statements → pick a month → Download CSV. Re-importing a month is safe.</p>
           <input type="file" accept=".csv,text/csv" onChange={(e) => { importVenmo(e.target.files?.[0]); e.target.value = '' }} />
-          <h2 style={{ marginTop: 18 }}>Import Wealthfront statements</h2>
-          <p className="muted small" style={{ marginTop: -4 }}>Wealthfront → Documents → Statements → Cash Account monthly PDFs. Select several at once. Anything Plaid already has is skipped, and re-importing is safe.</p>
-          <input type="file" accept="application/pdf,.pdf" multiple onChange={(e) => { importStatements(e.target.files); e.target.value = '' }} />
+          {!cloud && <>
+            <h2 style={{ marginTop: 18 }}>Import Wealthfront statements</h2>
+            <p className="muted small" style={{ marginTop: -4 }}>Wealthfront → Documents → Statements → Cash Account monthly PDFs. Select several at once. Anything Plaid already has is skipped, and re-importing is safe.</p>
+            <input type="file" accept="application/pdf,.pdf" multiple onChange={(e) => { importStatements(e.target.files); e.target.value = '' }} />
+          </>}
         </div>
 
         <div className="card">
@@ -161,6 +164,8 @@ export function Accounts() {
           ))}
         </div>
       </div>
+
+      {cloud && <PasskeysCard />}
 
       <div className="card section">
         <h2>Your rules</h2>
@@ -202,5 +207,30 @@ export function Accounts() {
         )}
       </div>
     </>
+  )
+}
+
+/** Passkeys on your account: one per device (phone, laptop). Each unlocks with that device's passcode or fingerprint. */
+function PasskeysCard() {
+  const toast = useToast()
+  const [keys, setKeys] = useState<{ id: string; friendly_name?: string | null; created_at: string }[] | null>(null)
+  const load = () => supabase!.auth.passkey.list().then(({ data }) => setKeys((data as never) || []))
+  useEffect(() => { load() }, [])
+  const add = async () => {
+    const { error } = await supabase!.auth.registerPasskey()
+    if (error) toast("The passkey wasn't saved on this device.", true); else { toast('Passkey added for this device.'); load() }
+  }
+  const remove = async (id: string) => { await supabase!.auth.passkey.delete({ passkeyId: id }); load() }
+  return (
+    <div className="card section">
+      <div className="group-head"><h2>Sign-in passkeys</h2><button className="btn small" onClick={add}>Add this device</button></div>
+      <p className="muted small" style={{ marginTop: -4 }}>Each device you use gets its own passkey. Remove one if you lose that device; you can always sign in with an email code.</p>
+      {keys == null ? <div className="empty">Loading…</div> : keys.length === 0 ? <div className="empty">No passkeys yet. Add one on each device you use.</div> : keys.map((k) => (
+        <div className="row" key={k.id}>
+          <div className="row-main"><div className="row-title">{k.friendly_name || 'Passkey'}</div><div className="muted small">added {k.created_at.slice(0, 10)}</div></div>
+          <button className="link-btn" onClick={() => remove(k.id)}>Remove</button>
+        </div>
+      ))}
+    </div>
   )
 }
