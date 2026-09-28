@@ -7,3 +7,7 @@ uploads/
 backups/
 web/node_modules/
 web/dist/
+# local Supabase function secrets
+supabase/functions/.env*
+supabase/.temp/
+supabase/.branches/
