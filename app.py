@@ -21,6 +21,7 @@ from flask import (Flask, jsonify, redirect, render_template, request, send_from
 import analytics  # noqa: E402
 import classify  # noqa: E402
 import db  # noqa: E402
+import insights  # noqa: E402
 import manual  # noqa: E402
 import mortgage  # noqa: E402
 import planning  # noqa: E402
@@ -648,6 +649,75 @@ def api_windfall_dismiss(wid):
 @login_required
 def api_mark_windfall(txn_id):
     planning.mark_windfall(txn_id, (request.get_json() or {}).get("label"))
+    return jsonify(ok=True)
+
+
+# ---------- phase 4: recurring, forecast, taxes, alerts ----------
+
+@app.route("/api/recurring")
+@login_required
+def api_recurring():
+    return jsonify(insights.recurring_summary())
+
+
+@app.route("/api/recurring/dismiss", methods=["POST"])
+@login_required
+def api_recurring_dismiss():
+    b = request.get_json() or {}
+    if not b.get("key"):
+        return jsonify(error="key required"), 400
+    insights.dismiss_recurring(b["key"], undo=bool(b.get("undo")))
+    return jsonify(ok=True)
+
+
+@app.route("/api/forecast")
+@login_required
+def api_forecast():
+    days = max(7, min(int(request.args.get("days", 60)), 120))
+    return jsonify(insights.forecast(days))
+
+
+@app.route("/api/forecast/low", methods=["PUT"])
+@login_required
+def api_forecast_low():
+    try:
+        v = float((request.get_json() or {}).get("low"))
+    except (TypeError, ValueError):
+        return jsonify(error="Enter a dollar amount."), 400
+    db.set_meta("forecast_low", str(max(v, 0)))
+    return jsonify(ok=True)
+
+
+@app.route("/api/taxes")
+@login_required
+def api_taxes():
+    return jsonify(insights.tax_year(request.args.get("year")))
+
+
+@app.route("/api/taxes/limits", methods=["PUT"])
+@login_required
+def api_tax_limits():
+    b = request.get_json() or {}
+    try:
+        year = int(b["year"])
+        k401 = float(b["k401"]) if b.get("k401") not in (None, "") else None
+        ira = float(b["ira"]) if b.get("ira") not in (None, "") else None
+    except (KeyError, TypeError, ValueError):
+        return jsonify(error="Enter the limits as dollar amounts."), 400
+    insights.set_tax_limits(year, k401, ira)
+    return jsonify(ok=True)
+
+
+@app.route("/api/alerts")
+@login_required
+def api_alerts():
+    return jsonify(insights.alerts())
+
+
+@app.route("/api/alerts/<path:aid>/dismiss", methods=["POST"])
+@login_required
+def api_alert_dismiss(aid):
+    insights.dismiss_alert(aid)
     return jsonify(ok=True)
 
 

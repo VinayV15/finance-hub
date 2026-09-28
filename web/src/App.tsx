@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { Icon } from './components/Icons'
 import { QuickSearch } from './components/Search'
@@ -10,19 +10,25 @@ import { Dashboard } from './pages/Dashboard'
 import { Home } from './pages/Home'
 import { Income } from './pages/Income'
 import { Mortgage } from './pages/Mortgage'
+import { Forecast } from './pages/Forecast'
+import { Recurring } from './pages/Recurring'
+import { Taxes } from './pages/Taxes'
 import { Transactions } from './pages/Transactions'
 
 const NAV = [
   { to: '/', label: 'Overview', icon: 'overview' },
-  { to: '/budget', label: 'Budget', icon: 'budget' },
-  { to: '/goals', label: 'Goals', icon: 'goals' },
   { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   { to: '/transactions', label: 'Transactions', icon: 'transactions' },
   { to: '/review', label: 'Review', icon: 'review' },
-  { to: '/income', label: 'Income', icon: 'income' },
+  { to: '/budget', label: 'Budget', icon: 'budget', section: 'Plan' },
+  { to: '/goals', label: 'Goals', icon: 'goals' },
+  { to: '/recurring', label: 'Bills', icon: 'recurring' },
+  { to: '/forecast', label: 'Forecast', icon: 'forecast' },
+  { to: '/income', label: 'Income', icon: 'income', section: 'Details' },
+  { to: '/taxes', label: 'Taxes', icon: 'taxes' },
   { to: '/mortgage', label: 'Mortgage', icon: 'mortgage' },
   { to: '/accounts', label: 'Accounts', icon: 'accounts' },
-]
+] as { to: string; label: string; icon: string; section?: string }[]
 
 // Dark by default; the choice is remembered on this device (index.html applies it before first paint).
 function useTheme() {
@@ -74,11 +80,14 @@ function Nav({ bottom = false }: { bottom?: boolean }) {
   return (
     <>
       {items.map((n) => (
-        <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+        <Fragment key={n.to}>
+        {!bottom && 'section' in n && n.section && <div className="nav-section">{n.section}</div>}
+        <NavLink to={n.to} end={n.to === '/'} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
           <span className="nav-ico"><Icon name={n.icon} /></span>
           <span className="nav-label">{n.label}</span>
           {n.to === '/review' && !!summary?.review_count && <span className="badge warn">{summary.review_count}</span>}
         </NavLink>
+        </Fragment>
       ))}
     </>
   )
@@ -116,6 +125,9 @@ function Shell() {
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/review" element={<Transactions reviewOnly />} />
           <Route path="/income" element={<Income />} />
+          <Route path="/recurring" element={<Recurring />} />
+          <Route path="/forecast" element={<Forecast />} />
+          <Route path="/taxes" element={<Taxes />} />
           <Route path="/mortgage" element={<Mortgage />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="*" element={<Home />} />

@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { Account, Totals, Txn } from '../api'
-import { qs } from '../api'
+import { post, qs } from '../api'
+import { Icon } from '../components/Icons'
 import { CashflowChart } from '../components/Charts'
 import { TxnDrawer } from '../components/Txns'
 import { catColor, Num, Sparkline } from '../components/Viz'
 import { ago, money, motionOK, niceDate, pct, periodLabel, periodRange } from '../format'
 import { presetRange, useFetch, useRange, useSummary } from '../hooks'
+
+interface Alert { id: string; level: 'bad' | 'warn' | 'info'; icon: string; title: string; detail: string; link: { to: string; params?: Record<string, string> } }
 
 type NwPoint = { date: string; net_worth: number; estimated: boolean }
 
@@ -41,6 +44,8 @@ export function Home() {
   const nw = useFetch<{ points: NwPoint[] }>('/api/networth_history').data
   const recent = useFetch<{ rows: Txn[] }>('/api/transactions?limit=8')
   const [open, setOpen] = useState<Txn | null>(null)
+  const alerts = useFetch<Alert[]>('/api/alerts')
+  const [allAlerts, setAllAlerts] = useState(false)
   const { reload } = useSummary()
   const range = useRange()
   const nav = useNavigate()
@@ -73,10 +78,23 @@ export function Home() {
           <Link className="btn small" to="/accounts">Fix it</Link>
         </div>
       ))}
-      {s.review_count > 0 && (
-        <div className="alert">
-          <span>⚠ {s.review_count} transaction{s.review_count === 1 ? '' : 's'} need a quick look so your totals are right.</span>
-          <Link className="btn small" to="/review">Review</Link>
+      {alerts.data && alerts.data.length > 0 && (
+        <div className="card alerts-card">
+          <div className="group-head"><h2>Heads up</h2><span className="muted small">{alerts.data.length} thing{alerts.data.length > 1 ? 's' : ''} worth a look</span></div>
+          {(allAlerts ? alerts.data : alerts.data.slice(0, 4)).map((a) => (
+            <div key={a.id} className={`alert-row lv-${a.level}`}>
+              <span className="alert-ico"><Icon name={a.icon} size={18} /></span>
+              <button className="alert-main" onClick={() => {
+                if (a.link.to === '/transactions') range.setPreset(a.link.params?.q ? '3m' : 'this_month')
+                nav(`${a.link.to}${qs(a.link.params || {})}`)
+              }}>
+                <b>{a.title}</b><span className="muted small">{a.detail}</span>
+              </button>
+              <button className="alert-x" aria-label={`Dismiss: ${a.title}`} title="Dismiss"
+                      onClick={async () => { await post(`/api/alerts/${encodeURIComponent(a.id)}/dismiss`, {}); alerts.reload() }}>✕</button>
+            </div>
+          ))}
+          {alerts.data.length > 4 && <button className="link-btn" onClick={() => setAllAlerts(!allAlerts)}>{allAlerts ? 'Show fewer' : `Show all ${alerts.data.length}`}</button>}
         </div>
       )}
 
