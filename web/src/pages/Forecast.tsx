@@ -78,6 +78,7 @@ export function Forecast() {
       <div className="card">
         <div className="group-head"><h2>{sel === 'total' ? 'All cash' : name(sel)}, next {days} days</h2>
           <span className="muted small">lowest point {money(lowPt?.bal, { cents: false })} on {lowPt ? niceDate(lowPt.date) : '—'}</span></div>
+        {sel !== 'total' && <div className="line-key"><span><i className="lk warn" />your {money(data.low_threshold, { cents: false })} warning level</span></div>}
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={series} margin={{ top: 10, right: 8, bottom: 0, left: 0 }}>
             <defs>
@@ -87,10 +88,9 @@ export function Forecast() {
               </linearGradient>
             </defs>
             <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis dataKey="date" tickFormatter={(d) => niceDate(d)} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={30} />
-            <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={56} />
-            {sel !== 'total' && <ReferenceLine y={data.low_threshold} stroke="var(--warn)" strokeDasharray="5 4"
-              label={{ value: `warning ${moneyShort(data.low_threshold)}`, fill: 'var(--warn)', fontSize: 11, position: 'insideTopRight' }} />}
+            <XAxis dataKey="date" tickFormatter={(d) => niceDate(d)} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={30} />
+            <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={56} />
+            {sel !== 'total' && <ReferenceLine y={data.low_threshold} stroke="var(--warn)" strokeDasharray="5 4" strokeWidth={1.5} />}
             <ReferenceLine y={0} stroke="var(--line-strong)" />
             <Tooltip content={(p) => <FcTip active={p.active} payload={p.payload as unknown as { payload: { date: string; bal: number } }[]} byDay={byDay} />} cursor={{ stroke: 'var(--line-strong)' }} />
             <Area type="stepAfter" dataKey="bal" stroke="var(--accent)" strokeWidth={2.5} fill="url(#fc-fill)"

@@ -80,16 +80,16 @@ export function Dashboard() {
     if (back.length) sources.push({ label: 'Money back', amount: -back.reduce((s, c) => s + c.amount, 0), color: 'var(--good)',
       onClick: () => toTxns({ flows: 'refund' }) })
     const spend = cats.filter((c) => c.amount > 0)
-    const top = spend.slice(0, 6), rest = spend.slice(6)
-    const SPEND_SLOTS = ['--c3', '--c4', '--c6', '--c5', '--c7', '--c2'] // distinct from Invested (lavender) and income (mint)
+    const top = spend.slice(0, 5), rest = spend.slice(5)
+    const SPEND_SLOTS = ['--c4', '--c6', '--c2', '--c5', '--c7'] // pinks, rose, gold, periwinkle, teal: clear of income (sky) and investing (violet)
     const outs: FlowNode[] = top.map((c, i) => ({ label: c.category, amount: c.amount, color: `var(${SPEND_SLOTS[i]})`,
       onClick: () => toTxns({ category: c.category, flows: 'spend,refund' }) }))
     if (rest.length) outs.push({ label: `Other spending (${rest.length})`, amount: rest.reduce((s, c) => s + c.amount, 0), color: 'var(--c-other)',
       onClick: () => toTxns({ flows: 'spend,refund' }) })
     if (t.invested > 0) outs.push({ label: 'Invested', amount: t.invested, color: 'var(--s-invest)', onClick: () => toTxns({ invested: '1' }) })
     const gap = sources.reduce((s, n) => s + n.amount, 0) - outs.reduce((s, n) => s + n.amount, 0)
-    if (gap > 1) outs.push({ label: 'Kept in cash', amount: gap, color: 'var(--seq-2)' })
-    else if (gap < -1) sources.push({ label: 'From savings', amount: -gap, color: 'var(--warn)' })
+    if (gap > 1) outs.push({ label: 'Kept in cash', amount: gap, color: 'var(--s-gold)' })
+    else if (gap < -1) sources.push({ label: 'From savings', amount: -gap, color: 'var(--c6)' })
     return { sources, outs }
   })()
 

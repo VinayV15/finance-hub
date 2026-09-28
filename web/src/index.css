@@ -1,4 +1,4 @@
-/* Finance Hub — "Plum": rich purple surfaces, lavender accent, mint for money coming in, coral for money going out.
+/* Finance Hub — "Plum": rich purple surfaces, lavender accent, sky for money coming in, pink for money going out.
    Dark is the default (set on <html data-theme> before first paint); light is the same system on lavender-white. */
 
 :root, :root[data-theme='dark'] {
@@ -24,22 +24,26 @@
   --accent-ink: #1d0b36;
   --accent-grad: linear-gradient(135deg, #c79bff 0%, #9b5cf0 45%, #6a07a3 100%);
   --focus: #d7b8ff;
-  /* chart series (validated: scripts/validate_palette.js, dark, surface #382753) */
-  --s-income: #17a878;
-  --s-spend: #e8683f;
-  --s-invest: #9d68ee;
+  /* chart series (validated: scripts/validate_palette.js, dark, surface #382753).
+     Money in = sky, money out = pink, investing = violet: all neighbors of purple. */
+  --s-income: #1a93dc;
+  --s-spend: #ce5686;
+  --s-invest: #9a7de3;
   --s-saved: #f7f1ff;
+  --s-gold: #bb881a;
   --seq: #9d68ee;
   --seq-2: #c9a6ff;
-  --grid: rgba(222, 204, 255, 0.09);
-  --c1: #9d68ee; --c2: #17a878; --c3: #e8683f; --c4: #2f9ddc; --c5: #b8860f; --c6: #e0509a; --c7: #6fa322;
+  --grid: rgba(222, 204, 255, 0.08);
+  --axis: #cfc2e8;
+  /* categorical, fixed order: violet, gold, sky, pink, periwinkle, rose, teal */
+  --c1: #9871d5; --c2: #ad8100; --c3: #0092da; --c4: #ca5e96; --c5: #6681e3; --c6: #d45e62; --c7: #009ca9;
   --c-other: #7d6d9c;
   --hm1: #4f3a78; --hm2: #6b47a8; --hm3: #8a5cd6; --hm4: #b186f5; --hm5: #e2ccff;
-  /* status, always with an icon or words */
-  --good: #5cebb4;
-  --warn-bg: rgba(255, 200, 87, 0.14);
-  --warn: #ffd27a;
-  --bad: #ff8a8a;
+  /* status, always with an icon or words: good = sky, warning = gold, bad = rose */
+  --good: #7cc8ff;
+  --warn-bg: rgba(242, 193, 78, 0.14);
+  --warn: #f2c14e;
+  --bad: #ff7b93;
   --scrim: rgba(18, 6, 36, 0.62);
 
   --r-panel: 22px;
@@ -72,20 +76,22 @@
   --accent-ink: #ffffff;
   --accent-grad: linear-gradient(135deg, #b17ef7 0%, #7d2fd0 50%, #4b0577 100%);
   --focus: #7d2fd0;
-  --s-income: #0fa877;
-  --s-spend: #e8603c;
-  --s-invest: #7b3fe4;
+  --s-income: #0070b5;
+  --s-spend: #ac3668;
+  --s-invest: #7152b5;
   --s-saved: #1f1233;
+  --s-gold: #b5820c;
   --seq: #7b3fe4;
   --seq-2: #b58cf5;
   --grid: #eee6f9;
-  --c1: #7b3fe4; --c2: #0fa877; --c3: #e8603c; --c4: #1a8fd6; --c5: #d99a00; --c6: #d6408c; --c7: #5f9e1a;
+  --axis: #4a3a66;
+  --c1: #7750b1; --c2: #8b6100; --c3: #0095dd; --c4: #a53c75; --c5: #6985e7; --c6: #af3b43; --c7: #009fac;
   --c-other: #b3a7c7;
   --hm1: #e9ddfc; --hm2: #cfb3f7; --hm3: #a97ef0; --hm4: #7b3fe4; --hm5: #4b0577;
-  --good: #0b7a50;
+  --good: #0064a8;
   --warn-bg: #fff1cc;
   --warn: #7a5200;
-  --bad: #c42b3d;
+  --bad: #b8234a;
   --scrim: rgba(40, 16, 72, 0.35);
 }
 
@@ -194,7 +200,7 @@ h3 { font-size: 13px; margin: 0 0 6px; color: var(--text-2); font-weight: 650; }
   position: relative; overflow: hidden; padding: 22px 24px 20px; border: 0; color: #fff; border-radius: 26px;
   background:
     radial-gradient(520px 260px at 92% -30%, rgba(255, 255, 255, 0.28), transparent 60%),
-    radial-gradient(420px 300px at -10% 130%, rgba(62, 230, 168, 0.28), transparent 60%),
+    radial-gradient(420px 300px at -10% 130%, rgba(79, 172, 255, 0.30), transparent 60%),
     var(--accent-grad);
   box-shadow: 0 26px 50px -26px #6a07a3, 0 1px 0 rgba(255, 255, 255, 0.25) inset;
 }
@@ -244,11 +250,11 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 .filters .seg { max-width: 100%; }
 
 .badge { font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
-.badge.spend { color: var(--s-spend); background: color-mix(in srgb, var(--s-spend) 16%, transparent); }
-.badge.income { color: var(--good); background: color-mix(in srgb, var(--s-income) 18%, transparent); }
+.badge.spend { color: var(--text); background: color-mix(in srgb, var(--s-spend) 30%, transparent); }
+.badge.income { color: var(--text); background: color-mix(in srgb, var(--s-income) 30%, transparent); }
 .badge.transfer { color: var(--muted); }
 .badge.refund { color: var(--good); }
-.badge.growth { color: var(--accent); background: color-mix(in srgb, var(--s-invest) 18%, transparent); }
+.badge.growth { color: var(--text); background: color-mix(in srgb, var(--s-invest) 30%, transparent); }
 .badge.ignore { color: var(--muted); text-decoration: line-through; }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
 
@@ -317,7 +323,7 @@ table.data td.r, table.data th.r { text-align: right; font-variant-numeric: tabu
 .heatmap-wrap { overflow-x: auto; padding-bottom: 4px; }
 .heatmap { display: flex; gap: 3px; width: max-content; }
 .heatmap-col, .heatmap-labels { display: grid; grid-template-rows: repeat(7, 12px); gap: 3px; }
-.heatmap-labels { font-size: 10px; color: var(--muted); line-height: 12px; padding-right: 4px; font-weight: 600; }
+.heatmap-labels { font-size: 11px; color: var(--muted); line-height: 12px; padding-right: 4px; font-weight: 600; }
 .hm-cell { display: inline-block; width: 12px; height: 12px; border-radius: 4px; background: var(--surface-sunk); }
 .hm-cell.empty-cell { background: transparent; }
 .hm-1 { background: var(--hm1); } .hm-2 { background: var(--hm2); } .hm-3 { background: var(--hm3); }
@@ -364,8 +370,8 @@ table.data td.r, table.data th.r { text-align: right; font-variant-numeric: tabu
 .ribbon { transition: opacity .15s; }
 .ribbon:hover { filter: brightness(1.25) saturate(1.2); }
 .ribbon.dim { opacity: 0.25; }
-.fl-name { fill: var(--text); font-size: 14px; font-weight: 700; font-family: var(--font-ui); }
-.fl-amt { fill: var(--muted); font-size: 12.5px; font-weight: 600; font-family: var(--font-ui); }
+.fl-name { fill: var(--text); font-size: 15.5px; font-weight: 700; font-family: var(--font-ui); }
+.fl-amt { fill: var(--text-2); font-size: 13.5px; font-weight: 600; font-family: var(--font-ui); }
 .flow-label.clickable { cursor: pointer; }
 .flow-label.clickable:hover .fl-name { text-decoration: underline; }
 
@@ -452,9 +458,9 @@ button.hm-cell:hover { outline: 2px solid var(--text); outline-offset: 1px; }
 .fc-ev { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 14px; }
 .fc-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-kind { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: none; min-width: 84px; text-align: center; }
-.k-income { background: color-mix(in srgb, var(--s-income) 22%, transparent); color: var(--good); }
-.k-bill { background: color-mix(in srgb, var(--s-spend) 20%, transparent); color: var(--s-spend); }
-.k-card { background: color-mix(in srgb, var(--c4) 22%, transparent); color: var(--c4); }
+.k-income { background: color-mix(in srgb, var(--s-income) 26%, transparent); color: var(--text); }
+.k-bill { background: color-mix(in srgb, var(--s-spend) 24%, transparent); color: var(--text); }
+.k-card { background: color-mix(in srgb, var(--c5) 24%, transparent); color: var(--text); }
 .k-transfer { background: var(--surface-2); color: var(--text-2); }
 .fc-how { padding-left: 18px; margin: 4px 0 0; line-height: 1.6; }
 
@@ -528,3 +534,17 @@ button.hm-cell:hover { outline: 2px solid var(--text); outline-offset: 1px; }
 .fund-amt { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
 .proj-grid { align-items: start; }
 @media (min-width: 981px) { .plan-controls { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; } }
+
+/* keys for lines drawn on charts (kept off the plot so nothing sits on top of the data) */
+.line-key { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 12.5px; font-weight: 650; color: var(--text-2); margin: -2px 0 8px; }
+.line-key span { display: inline-flex; align-items: center; gap: 7px; }
+.lk { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--text); }
+.lk.dashed { border-top: 2px dashed var(--text-2); }
+.lk.dotted { border-top: 2px dotted var(--bad); }
+.lk.warn { border-top: 2px dashed var(--warn); }
+
+/* every range slider matches the Plan sliders (no browser-default track color) */
+input[type='range'] { -webkit-appearance: none; appearance: none; height: 8px; border-radius: 999px; cursor: pointer; background: var(--surface-sunk); }
+input[type='range']:not([style*='--fill']) { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 45%, transparent), var(--surface-sunk)); }
+input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+input[type='range']::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); }

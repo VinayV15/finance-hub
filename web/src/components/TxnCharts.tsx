@@ -99,8 +99,8 @@ export function CategoryOverTime({ data, onPick }: { data: TxnChartData; onPick?
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={rows} stackOffset="sign" margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap="22%">
             <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis dataKey="month" tickFormatter={periodLabel} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={12} />
-            <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
+            <XAxis dataKey="month" tickFormatter={periodLabel} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={12} />
+            <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={52} />
             <ReferenceLine y={0} stroke="var(--line)" />
             <Tooltip content={<OverTimeTip series={series} />} cursor={{ fill: 'var(--surface-2)' }} />
             {series.map((s, i) => (
@@ -191,8 +191,8 @@ export function DailyPattern({ data, start, end, onPickDay }: { data: TxnChartDa
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={dow} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap="22%">
             <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis dataKey="day" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={48} />
+            <XAxis dataKey="day" tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={48} />
             <Tooltip cursor={{ fill: 'var(--surface-2)' }} content={({ active, payload }) => active && payload?.length ? (
               <div className="tt"><div className="tt-head">{(payload[0].payload as { day: string }).day}</div>
                 <div className="tt-row"><span>Average</span><b className="num">{money(payload[0].value as number)}</b></div></div>) : null} />

@@ -55,11 +55,11 @@ export function HomeValueCard() {
           <ResponsiveContainer width="100%" height={230}>
             <ComposedChart data={chart} margin={{ top: 10, right: 8, bottom: 0, left: 0 }}>
               <defs>
-                <linearGradient id="hv-past" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" style={{ stopColor: 'var(--c4)', stopOpacity: 0.45 }} /><stop offset="100%" style={{ stopColor: 'var(--c4)', stopOpacity: 0 }} /></linearGradient>
+                <linearGradient id="hv-past" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" style={{ stopColor: 'var(--s-income)', stopOpacity: 0.45 }} /><stop offset="100%" style={{ stopColor: 'var(--s-income)', stopOpacity: 0 }} /></linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="var(--grid)" />
-              <XAxis dataKey="quarter" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={24} />
-              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={56} domain={['auto', 'auto']} />
+              <XAxis dataKey="quarter" tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={24} />
+              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={56} domain={['auto', 'auto']} />
               <Tooltip cursor={{ stroke: 'var(--line-strong)' }} content={({ active, payload }) => {
                 if (!active || !payload?.length) return null
                 const p = payload[0].payload as { quarter: string; past?: number; mid?: number; low?: number; high?: number }
@@ -69,7 +69,7 @@ export function HomeValueCard() {
                     <div className="tt-row"><span>Range</span><b className="num">{moneyShort(p.low!)} – {moneyShort(p.high!)}</b></div></>}
                 </div>
               }} />
-              <Area dataKey="past" stroke="var(--c4)" strokeWidth={2} fill="url(#hv-past)" type="monotone" isAnimationActive={motionOK} animationDuration={700} connectNulls={false} />
+              <Area dataKey="past" stroke="var(--s-income)" strokeWidth={2} fill="url(#hv-past)" type="monotone" isAnimationActive={motionOK} animationDuration={700} connectNulls={false} />
               <Line dataKey="mid" stroke="var(--accent)" strokeWidth={2.5} dot={false} type="monotone" isAnimationActive={false} />
               <Line dataKey="low" stroke="var(--text-2)" strokeDasharray="4 4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
               <Line dataKey="high" stroke="var(--text-2)" strokeDasharray="4 4" strokeWidth={1.5} dot={false} isAnimationActive={false} />

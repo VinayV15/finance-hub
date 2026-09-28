@@ -34,7 +34,7 @@ function AgeTip({ active, payload }: { active?: boolean; payload?: readonly { pa
   const w = Object.entries(r.withdrawn).filter(([, v]) => v > 1)
   return (
     <div className="tt"><div className="tt-head">Age {r.age} · {r.year}{r.retired ? ' · retired' : ''}</div>
-      {([['k401', '401(k)', 'var(--c1)'], ['roth', 'Roth IRA', 'var(--c6)'], ['brokerage', 'Brokerage', 'var(--c4)'], ['cash', 'Cash', 'var(--s-income)']] as const).map(([k, l, c]) => (
+      {([['k401', '401(k)', 'var(--s-invest)'], ['roth', 'Roth IRA', 'var(--c4)'], ['brokerage', 'Brokerage', 'var(--s-gold)'], ['cash', 'Cash', 'var(--s-income)']] as const).map(([k, l, c]) => (
         <div className="tt-row" key={k}><span><i className="swatch" style={{ background: c }} />{l}</span><b className="num">{usd(r[k])}</b></div>
       ))}
       {r.retired && <div className="tt-row"><span>Living costs this year</span><b className="num">{usd(r.need)}</b></div>}
@@ -137,24 +137,29 @@ export function Projection() {
             <div className="card">
               <div className="group-head"><h2>Your accounts by age</h2>
                 <div className="legend" style={{ margin: 0 }}>
-                  <span><i className="swatch" style={{ background: 'var(--c1)' }} />401(k)</span><span><i className="swatch" style={{ background: 'var(--c6)' }} />Roth IRA</span>
-                  <span><i className="swatch" style={{ background: 'var(--c4)' }} />Brokerage</span><span><i className="swatch" style={{ background: 'var(--s-income)' }} />Cash</span>
+                  <span><i className="swatch" style={{ background: 'var(--s-invest)' }} />401(k)</span><span><i className="swatch" style={{ background: 'var(--c4)' }} />Roth IRA</span>
+                  <span><i className="swatch" style={{ background: 'var(--s-gold)' }} />Brokerage</span><span><i className="swatch" style={{ background: 'var(--s-income)' }} />Cash</span>
                 </div></div>
+              <div className="line-key">
+                <span><i className="lk solid" />you retire at {p.retire_age}</span>
+                {p.retire_age < 60 && <span><i className="lk dashed" />59½: 401(k) and Roth growth open up</span>}
+                {sim.runsOutAge && <span className="neg"><i className="lk dotted" />money runs out at {sim.runsOutAge}</span>}
+              </div>
               <ResponsiveContainer width="100%" height={330}>
                 <ComposedChart data={chart} margin={{ top: 14, right: 8, bottom: 0, left: 0 }}>
-                  <defs>{[['pl-401', 'var(--c1)'], ['pl-roth', 'var(--c6)'], ['pl-brok', 'var(--c4)'], ['pl-cash', 'var(--s-income)']].map(([id, c]) => (
+                  <defs>{[['pl-401', 'var(--s-invest)'], ['pl-roth', 'var(--c4)'], ['pl-brok', 'var(--s-gold)'], ['pl-cash', 'var(--s-income)']].map(([id, c]) => (
                     <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" style={{ stopColor: c, stopOpacity: 0.9 }} /><stop offset="100%" style={{ stopColor: c, stopOpacity: 0.4 }} /></linearGradient>))}</defs>
                   <CartesianGrid vertical={false} stroke="var(--grid)" />
-                  <XAxis dataKey="age" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={16} />
-                  <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={58} />
+                  <XAxis dataKey="age" tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={16} />
+                  <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={58} />
                   <Tooltip content={(t) => <AgeTip active={t.active} payload={t.payload as unknown as { payload: YearRow }[]} />} cursor={{ stroke: 'var(--line-strong)' }} />
-                  <ReferenceLine x={p.retire_age} stroke="var(--accent)" strokeWidth={2} label={{ value: `retire ${p.retire_age}`, fill: 'var(--accent)', fontSize: 11, position: 'insideTopLeft' }} />
-                  {p.retire_age < 60 && <ReferenceLine x={60} stroke="var(--text-2)" strokeDasharray="4 4" label={{ value: '59½: retirement accounts open', fill: 'var(--muted)', fontSize: 11, position: 'insideTopRight' }} />}
-                  {sim.runsOutAge && <ReferenceLine x={sim.runsOutAge} stroke="var(--bad)" strokeWidth={2} label={{ value: 'money runs out', fill: 'var(--bad)', fontSize: 11, position: 'insideTopRight' }} />}
+                  <ReferenceLine x={p.retire_age} stroke="var(--text)" strokeWidth={2} />
+                  {p.retire_age < 60 && <ReferenceLine x={60} stroke="var(--text-2)" strokeDasharray="5 4" strokeWidth={1.5} />}
+                  {sim.runsOutAge && <ReferenceLine x={sim.runsOutAge} stroke="var(--bad)" strokeWidth={2} strokeDasharray="2 3" />}
                   <Area dataKey="cashPos" stackId="a" stroke="var(--s-income)" fill="url(#pl-cash)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
-                  <Area dataKey="brokerage" stackId="a" stroke="var(--c4)" fill="url(#pl-brok)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
-                  <Area dataKey="roth" stackId="a" stroke="var(--c6)" fill="url(#pl-roth)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
-                  <Area dataKey="k401" stackId="a" stroke="var(--c1)" fill="url(#pl-401)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
+                  <Area dataKey="brokerage" stackId="a" stroke="var(--s-gold)" fill="url(#pl-brok)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
+                  <Area dataKey="roth" stackId="a" stroke="var(--c4)" fill="url(#pl-roth)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
+                  <Area dataKey="k401" stackId="a" stroke="var(--s-invest)" fill="url(#pl-401)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
                 </ComposedChart>
               </ResponsiveContainer>
               {p.retire_age < 60 && (
@@ -264,8 +269,8 @@ function NetWorthTab({ rows, p }: { rows: YearRow[]; p: Plan }) {
             <ComposedChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: 0 }}>
               <defs><linearGradient id="nw2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" style={{ stopColor: 'var(--accent)', stopOpacity: 0.6 }} /><stop offset="100%" style={{ stopColor: 'var(--accent)', stopOpacity: 0 }} /></linearGradient></defs>
               <CartesianGrid vertical={false} stroke="var(--grid)" />
-              <XAxis dataKey="age" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={58} />
+              <XAxis dataKey="age" tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={58} />
               <Tooltip cursor={{ stroke: 'var(--line-strong)' }} content={({ active, payload }) => active && payload?.length ? (() => { const r = payload[0].payload as typeof data[0]; return (
                 <div className="tt"><div className="tt-head">Age {r.age} · {r.year}</div>
                   <div className="tt-row"><span>Accounts</span><b className="num">{usd(r.liquid)}</b></div><div className="tt-row"><span>Home equity</span><b className="num">{usd(r.home)}</b></div>

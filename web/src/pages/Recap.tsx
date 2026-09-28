@@ -114,8 +114,8 @@ export function Recap() {
             <BarChart data={data.daily} margin={{ top: 8, right: 4, bottom: 0, left: 0 }} barCategoryGap="18%">
               <GradDefs />
               <CartesianGrid vertical={false} stroke="var(--grid)" />
-              <XAxis dataKey="date" tickFormatter={(d) => String(+d.slice(8))} tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={8} />
-              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={48} />
+              <XAxis dataKey="date" tickFormatter={(d) => String(+d.slice(8))} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={8} />
+              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={48} />
               <Tooltip cursor={{ fill: 'var(--surface-2)' }} content={({ active, payload }) => active && payload?.length ? (
                 <div className="tt"><div className="tt-head">{niceDate((payload[0].payload as { date: string }).date)}</div>
                   <div className="tt-row"><span>Spent</span><b className="num">{money(payload[0].value as number)}</b></div>

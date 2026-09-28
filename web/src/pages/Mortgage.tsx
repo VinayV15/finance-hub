@@ -121,8 +121,8 @@ export function Mortgage() {
             <ComposedChart data={balanceSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <GradDefs />
               <CartesianGrid vertical={false} stroke="var(--grid)" />
-              <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={20} />
-              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
+              <XAxis dataKey="year" tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={20} />
+              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={52} />
               <Tooltip content={<TT />} />
               <Legend wrapperStyle={{ fontSize: 12.5, color: 'var(--text-2)' }} iconType="plainline" />
               <Area isAnimationActive={motionOK} animationDuration={700} name="Your loan" dataKey="yours" stroke="var(--s-invest)" strokeWidth={2.5} fill="url(#a-invest)" dot={false} type="monotone" />
@@ -136,12 +136,12 @@ export function Mortgage() {
             <BarChart data={data.years} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <GradDefs />
               <CartesianGrid vertical={false} stroke="var(--grid)" />
-              <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={20} />
-              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
+              <XAxis dataKey="year" tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={20} />
+              <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={52} />
               <Tooltip content={<TT />} cursor={{ fill: 'var(--surface-2)' }} />
               <Legend wrapperStyle={{ fontSize: 12.5, color: 'var(--text-2)' }} />
-              <Bar isAnimationActive={motionOK} animationDuration={700} name="Interest" dataKey="interest" stackId="a" fill="var(--s-spend)" stroke="var(--surface)" strokeWidth={1.5} />
               <Bar isAnimationActive={motionOK} animationDuration={700} name="Principal" dataKey="principal" stackId="a" fill="var(--s-invest)" stroke="var(--surface)" strokeWidth={1.5} />
+              <Bar isAnimationActive={motionOK} animationDuration={700} name="Interest" dataKey="interest" stackId="a" fill="var(--s-spend)" stroke="var(--surface)" strokeWidth={1.5} />
               <Bar isAnimationActive={motionOK} animationDuration={700} name="Extra principal" dataKey="extra" stackId="a" fill="var(--s-income)" stroke="var(--surface)" strokeWidth={1.5} radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

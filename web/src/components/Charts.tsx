@@ -99,8 +99,8 @@ export function CashflowChart({ periods, height = 300, onPick }: {
           <ComposedChart data={periods} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="22%">
             <GradDefs />
             <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis dataKey="period" tickFormatter={periodLabel} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={12} />
-            <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
+            <XAxis dataKey="period" tickFormatter={periodLabel} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={12} />
+            <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} width={52} />
             <ReferenceLine y={0} stroke="var(--line)" />
             <Tooltip content={<CashTooltip />} cursor={{ fill: 'var(--surface-2)' }} />
             <Bar isAnimationActive={motionOK} animationDuration={700} dataKey="income" fill="url(#g-income)" radius={[8, 8, 3, 3]} maxBarSize={26}
