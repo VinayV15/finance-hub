@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Num } from '../components/Viz'
 import { money, moneyShort, motionOK } from '../format'
@@ -75,7 +75,7 @@ export function Projection() {
     invest: Math.round(data.monthly_invested / 50) * 50, cash: Math.max(0, Math.round((data.monthly_saved - data.monthly_invested) / 50) * 50),
     k401: Math.round(data.k401_per_year / 500) * 500, ret: 5, home: 1, years: 30,
   } : null)
-  const rows = useMemo(() => (data && params ? project(data, params) : []), [data, params])
+  const rows = data && params ? project(data, params) : []  // cheap: 30 years x 12 months x 3 runs
   if (!data || !params) return <div className="empty">Loading…</div>
   const set = (k: keyof typeof params) => (v: number) => setP({ ...params, [k]: v })
   const at = (n: number) => rows[Math.min(n, rows.length - 1)]
