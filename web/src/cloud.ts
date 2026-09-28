@@ -8,7 +8,8 @@ const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 export const cloud = !!(URL_ && KEY)
 export const API_BASE = cloud ? `${URL_}/functions/v1` : ''
 export const supabase: SupabaseClient | null = cloud
-  ? createClient(URL_!, KEY!, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } })
+  // detectSessionInUrl: the emailed sign-in link lands back here and signs you in
+  ? createClient(URL_!, KEY!, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
   : null
 
 /** Current access token (refreshed automatically), or null when signed out. */

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { supabase } from '../cloud'
 
-type Step = 'start' | 'email' | 'code' | 'add-passkey'
+export type Step = 'start' | 'email' | 'code' | 'add-passkey'
 
 /** Sign in with a passkey (your phone passcode or Touch ID unlocks it), or with a 6-digit code emailed to you. */
-export function SignIn({ onDone }: { onDone: () => void }) {
-  const [step, setStep] = useState<Step>('start')
+export function SignIn({ onDone, initialStep = 'start' }: { onDone: () => void; initialStep?: Step }) {
+  const [step, setStep] = useState<Step>(initialStep)
   const [email, setEmail] = useState(() => { try { return localStorage.getItem('fh.email') || '' } catch { return '' } })
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
@@ -26,7 +26,7 @@ export function SignIn({ onDone }: { onDone: () => void }) {
   })
 
   const sendCode = () => run(async () => {
-    const { error } = await sb.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } })
+    const { error } = await sb.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: `${location.origin}${import.meta.env.BASE_URL}` } })
     if (error) throw new Error(error.status === 429 ? 'Too many codes sent. Wait a few minutes and try again.' : "Couldn't send a code to that address.")
     try { localStorage.setItem('fh.email', email.trim()) } catch { /* private mode */ }
     setStep('code')
@@ -55,26 +55,26 @@ export function SignIn({ onDone }: { onDone: () => void }) {
           <>
             <p className="muted">Sign in to see your money.</p>
             <button className="btn primary big" disabled={busy} onClick={passkey}>Sign in with passkey</button>
-            <button className="link-btn" onClick={() => setStep('email')}>Use an email code instead</button>
+            <button className="link-btn" onClick={() => setStep('email')}>Sign in with an email link instead</button>
           </>
         )}
 
         {step === 'email' && (
           <form onSubmit={(e) => { e.preventDefault(); sendCode() }}>
-            <p className="muted">We'll email you a 6-digit code.</p>
+            <p className="muted">We'll email you a sign-in link.</p>
             <input className="input big" type="email" autoComplete="email" required placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email" />
-            <button className="btn primary big" disabled={busy || !email.trim()}>Send code</button>
+            <button className="btn primary big" disabled={busy || !email.trim()}>Email me a link</button>
             <button type="button" className="link-btn" onClick={() => setStep('start')}>Back</button>
           </form>
         )}
 
         {step === 'code' && (
           <form onSubmit={(e) => { e.preventDefault(); verify() }}>
-            <p className="muted">Enter the code sent to <b>{email}</b>.</p>
+            <p className="muted">Check <b>{email}</b> and tap the link on this device. If the email shows a code instead, enter it here.</p>
             <input className="input big code" inputMode="numeric" autoComplete="one-time-code" maxLength={8} required value={code}
                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} aria-label="Code" />
-            <button className="btn primary big" disabled={busy || code.length < 6}>Sign in</button>
-            <button type="button" className="link-btn" onClick={sendCode} disabled={busy}>Send a new code</button>
+            <button className="btn primary big" disabled={busy || code.length < 6}>Sign in with code</button>
+            <button type="button" className="link-btn" onClick={sendCode} disabled={busy}>Send another email</button>
           </form>
         )}
 
@@ -82,7 +82,7 @@ export function SignIn({ onDone }: { onDone: () => void }) {
           <>
             <p>You're in. Add a passkey so next time you just unlock with this device's passcode or fingerprint, no email needed.</p>
             <button className="btn primary big" disabled={busy} onClick={addPasskey}>Add a passkey</button>
-            <button className="link-btn" onClick={onDone}>Not now</button>
+            <button className="link-btn" onClick={() => { try { localStorage.setItem('fh.passkeyLater', '1') } catch { /* private mode */ } onDone() }}>Not now</button>
           </>
         )}
 

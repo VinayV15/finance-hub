@@ -148,10 +148,17 @@ function Shell() {
 
 /** Cloud mode: show the sign-in screen until there is a session (and again if it ends or is refused). */
 function useSignedIn() {
-  const [state, setState] = useState<'checking' | 'in' | 'out'>(cloud ? 'checking' : 'in')
+  const [state, setState] = useState<'checking' | 'in' | 'out' | 'add-passkey'>(cloud ? 'checking' : 'in')
   useEffect(() => {
     if (!supabase) return
-    supabase.auth.getSession().then(({ data }) => setState(data.session ? 'in' : 'out'))
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session) return setState('out')
+      // Signed in (e.g. from the emailed link) but this account has no passkey yet: offer one, once.
+      let later = false
+      try { later = localStorage.getItem('fh.passkeyLater') === '1' } catch { /* private mode */ }
+      const { data: keys } = await supabase!.auth.passkey.list()
+      setState(!later && keys && keys.length === 0 ? 'add-passkey' : 'in')
+    })
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || !session) setState('out')
       else if (event === 'SIGNED_IN') setState((s) => (s === 'out' ? 'out' : 'in')) // SignIn decides when it's done (passkey step)
@@ -167,6 +174,7 @@ export default function App() {
   const [signedIn, done] = useSignedIn()
   if (signedIn === 'checking') return <div className="empty" style={{ paddingTop: '30vh' }}>Loading…</div>
   if (signedIn === 'out') return <SignIn onDone={done} />
+  if (signedIn === 'add-passkey') return <SignIn onDone={done} initialStep="add-passkey" />
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <ToastProvider>
