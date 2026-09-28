@@ -37,7 +37,7 @@ export function Recurring() {
     try { await post('/api/recurring/dismiss', { key: b.key, undo }); reload(); toast(undo ? `${b.name} is back on your bills.` : `${b.name} removed from bills.`) }
     catch (e) { toast((e as Error).message, true) }
   }
-  const openTxns = (b: Bill) => { range.setPreset('12m'); nav(`/transactions${qs({ q: b.kind === 'mortgage' ? 'servicer' : b.name.split(' ').slice(0, 2).join(' ') })}`) }
+  const openTxns = (b: Bill) => { range.setPreset('12m'); nav(`/transactions${qs(b.kind === 'mortgage' ? { category: 'Housing' } : { q: b.name.split(' ').slice(0, 2).join(' ') })}`) }
 
   return (
     <>

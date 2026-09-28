@@ -2,7 +2,7 @@
 
 Private, local personal-finance dashboard. Runs on a Mac; open it from any browser on the same Wi-Fi.
 
-- Pulls balances, transactions, holdings, and loan details from Plaid (Wells Fargo, Amex, Wealthfront, Robinhood, …)
+- Pulls balances, transactions, holdings, and loan details from Plaid (banks, cards, brokerages, loans)
 - Venmo via statement CSV import; anything else via manual balances
 - Classifies every transaction as spending / income / refund / transfer / investment growth, so money moving
   between your own accounts is never counted twice (`classify.py`)

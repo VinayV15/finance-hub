@@ -5,7 +5,7 @@ Each transaction gets a *flow*:
   spend     money that left you for good (purchases, bills, mortgage, money sent to people)
   income    money that arrived from outside (paychecks, interest, tax refunds, money from people)
   refund    money back (merchant refunds, friends paying you back, work reimbursements) — reduces spending
-  transfer  money moving between your own accounts (card payments, Robinhood contributions, Venmo funding)
+  transfer  money moving between your own accounts (card payments, brokerage contributions, Venmo funding)
   growth    dividends/interest earned inside an investment account (not spendable income)
   ignore    not real money movement (bank verification micro-deposits, test deposits) — left out of everything
 
@@ -44,17 +44,25 @@ CATEGORY_NAMES = {
 
 # Names that mean "one of my own accounts". Extended at runtime with linked institution names.
 OWN_ALIASES = {
-    "Robinhood": ["robinhood"],
-    "Wealthfront": ["wealthfront"],
-    "Wells Fargo": ["wells fargo", "wf bank"],
-    "American Express": ["american express", "amex"],
-    "Venmo": ["venmo"],
-    "Empower": ["empower"],
+    "Robinhood": ["robinhood"], "Wealthfront": ["wealthfront"], "Betterment": ["betterment"],
+    "Fidelity": ["fidelity"], "Vanguard": ["vanguard"], "Charles Schwab": ["schwab"], "E*TRADE": ["etrade", "e*trade"],
+    "Chase": ["chase"], "Bank of America": ["bank of america", "bofa"], "Wells Fargo": ["wells fargo", "wf bank"],
+    "Citi": ["citibank", "citi card"], "Capital One": ["capital one"], "Ally": ["ally bank"],
+    "American Express": ["american express", "amex"], "Discover": ["discover"],
+    "Venmo": ["venmo"], "Empower": ["empower"],
 }
 
 PAYROLL_RE = re.compile(r"payroll|direct dep|salary|\bpayrl\b|\bach credit\b.*payroll", re.I)
 P2P_RE = re.compile(r"\bzelle\b|money transfer authorized .* apple|apple cash|cash app|\bpaypal\b", re.I)
-MORTGAGE_RE = re.compile(r"servicer|servicer|loancare|mortgage", re.I)
+MORTGAGE_RE = re.compile(r"mortgage|home loan|loancare|mr\\.? cooper", re.I)  # plus your servicer, from the Mortgage page settings
+
+
+def _servicer_re():
+    """Your mortgage servicer's name(s), saved on the Mortgage page (kept out of the code)."""
+    pat = (db.get_json("mortgage", {}) or {}).get("match_pattern")
+    return re.compile(pat, re.I) if pat else re.compile(r"(?!x)x")
+
+
 # Tiny deposits/withdrawals a company makes to confirm you own the account (Google, PayPal, Plaid…).
 VERIFY_RE = re.compile(r"acctverify|acct verify|verification|verify|micro[- ]?deposit|trial deposit|ach test", re.I)
 ATM_OUT_RE = re.compile(r"atm withdrawal|non-wf atm withdrawal", re.I)
@@ -156,7 +164,7 @@ def _auto(t, own):
         return "transfer", kind, "Investing" if kind.startswith("invest") else "Transfer", 0, f"to/from your {target} account"
 
     # Mortgage
-    if detailed == "LOAN_PAYMENTS_MORTGAGE_PAYMENT" or (primary == "LOAN_PAYMENTS" and MORTGAGE_RE.search(name)):
+    if detailed == "LOAN_PAYMENTS_MORTGAGE_PAYMENT" or (primary == "LOAN_PAYMENTS" and (MORTGAGE_RE.search(name) or _servicer_re().search(name))):
         return "spend", "mortgage", "Housing", 0, "mortgage payment"
     if primary == "LOAN_PAYMENTS" and out:
         return "spend", "loan_payment", "Loan Payments", 0, "loan payment"

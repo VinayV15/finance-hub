@@ -72,7 +72,7 @@ function NewGoal({ onSaved }: { onSaved: () => void }) {
   const [f, setF] = useState({ name: '', target: '', target_date: '', months: '6', kind: 'pmi', starting: '' })
   const cash = (summary?.accounts || []).filter((a) => a.type === 'depository')
   const [accts, setAccts] = useState<string[]>([])
-  useEffect(() => { setAccts(cash.filter((a) => ['Wealthfront', 'Wells Fargo'].includes(a.institution || '')).map((a) => a.account_id)) }, [summary]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setAccts(cash.filter((a) => a.source !== 'venmo').map((a) => a.account_id)) }, [summary]) // eslint-disable-line react-hooks/exhaustive-deps
   const defaults: Record<GoalType, string> = { emergency: 'Emergency fund', roth: `Roth IRA ${new Date().getFullYear()}`, investing: 'Invest monthly', mortgage: 'Drop PMI', custom: '' }
   const save = async () => {
     const config = type === 'emergency' ? { months: +f.months || 6, accounts: accts }

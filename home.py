@@ -13,7 +13,7 @@ import certifi
 import db
 
 HPI_URL = "https://www.fhfa.gov/hpi/download/quarterly_datasets/hpi_at_metro.csv"
-DEFAULT_CBSA = "12420"  # your metro area
+DEFAULT_CBSA = None  # your metro's FHFA code, saved as meta "home_cbsa" (e.g. 12420 = one Texas metro)
 INFLATION = 2.5  # % a year, to turn market growth into today's dollars
 
 
@@ -39,6 +39,8 @@ def _download(cbsa):
 def index(refresh=False):
     """The cached index, re-downloaded when older than 30 days (or on request). Falls back to the cache."""
     cbsa = db.get_meta("home_cbsa") or DEFAULT_CBSA
+    if not cbsa:
+        return None
     cached = db.get_json("hpi")
     stale = not cached or cached.get("cbsa") != cbsa or \
         datetime.now() - datetime.fromisoformat(cached["fetched"]) > timedelta(days=30)

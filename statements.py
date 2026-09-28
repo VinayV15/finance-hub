@@ -31,18 +31,18 @@ SECTIONS = [
 ]
 
 # Who the money went to/came from -> (display name, Plaid-style primary, detailed). First match wins.
-KNOWN = [
-    (r"acme|payroll", ("ACME Payroll Deposit", "INCOME", "INCOME_WAGES")),
-    (r"amex|american express", ("Amex payment", "LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT")),
-    (r"servicer|servicer|loancare", ("Servicer mortgage", "LOAN_PAYMENTS", "LOAN_PAYMENTS_MORTGAGE_PAYMENT")),
-    (r"robinhood", ("Robinhood", "TRANSFER_OUT", "TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS")),
+# Your own billers (employer, card, servicer, utilities…) live in the database as meta "statement_rules",
+# [[pattern, name, primary, detailed], …], so they never end up in the code. These generic ones come after.
+GENERIC = [
+    (r"payroll", ("Payroll Deposit", "INCOME", "INCOME_WAGES")),
+    (r"mortgage|loancare", ("Mortgage payment", "LOAN_PAYMENTS", "LOAN_PAYMENTS_MORTGAGE_PAYMENT")),
     (r"venmo", ("Venmo", None, None)),  # direction decides TRANSFER_IN / TRANSFER_OUT
-    (r"wells fargo", ("Wells Fargo", None, None)),
-    (r"city water", ("City Water Utilities", "RENT_AND_UTILITIES", "RENT_AND_UTILITIES_WATER")),
-    (r"cable co", ("Cable Co", "RENT_AND_UTILITIES", "RENT_AND_UTILITIES_INTERNET_AND_CABLE")),
-    (r"powerco|powerco", ("Power Co", "RENT_AND_UTILITIES", "RENT_AND_UTILITIES_GAS_AND_ELECTRICITY")),
-    (r"planetgym", ("Planet Gym", "PERSONAL_CARE", "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS")),
 ]
+
+
+def known():
+    mine = [(r[0], (r[1], r[2], r[3])) for r in (db.get_json("statement_rules", []) or [])]
+    return mine + GENERIC
 
 
 def _pdf_text(raw_bytes):
@@ -57,7 +57,7 @@ def _describe(section, middle):
     parts = [p.strip() for p in re.split(r"\s{2,}", middle) if p.strip()]
     method = parts[0] if parts else ""
     initiator = parts[-1] if len(parts) >= 3 and parts[-1] != "--" else ""
-    for pat, (name, primary, detailed) in KNOWN:
+    for pat, (name, primary, detailed) in known():
         if re.search(pat, initiator, re.I):
             if primary is None:
                 primary = "TRANSFER_IN" if section == "in" else "TRANSFER_OUT"

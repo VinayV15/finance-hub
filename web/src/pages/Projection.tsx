@@ -185,11 +185,11 @@ export function Projection() {
               <h3>Returns (average per year, before inflation)</h3>
               <Slider label="Stocks: 401(k), Roth, brokerage" value={p.stock_return} set={set('stock_return')} min={2} max={11} step={0.5} fmt={pctF} hint="US stock-heavy portfolios have averaged about 7–10% over long periods" />
               <Slider label="Savings account interest" value={p.cash_apy ?? 0} set={set('cash_apy')} min={0} max={6} step={0.05} fmt={pctF} hint={`your cash actually earned ${data.cash_apy}% over the last 12 months`} />
-              <Slider label="Home value growth, after inflation" value={p.home_growth ?? 0} set={set('home_growth')} min={-2} max={6} step={0.25} fmt={pctF} hint="your area area's long-run pace, from the price index" />
+              <Slider label="Home value growth, after inflation" value={p.home_growth ?? 0} set={set('home_growth')} min={-2} max={6} step={0.25} fmt={pctF} hint="your area's long-run pace, from the price index" />
               <Slider label="Inflation" value={p.inflation} set={set('inflation')} min={1} max={5} step={0.25} fmt={pctF} />
               <h3>Life in retirement</h3>
               <Slider label="Spending vs. today" value={p.spend_change_pct} set={set('spend_change_pct')} min={-40} max={40} step={5} fmt={(v) => `${v > 0 ? '+' : ''}${v}%`}
-                      hint={`today ${usd(data.avg.spend_year)}/yr in your area${data.mortgage ? `; the ${usd(data.mortgage.pi_monthly * 12)}/yr mortgage payment stops after ${data.mortgage.payoff.slice(0, 4)}` : ''}. Moving somewhere cheaper? Try −20%.`} />
+                      hint={`today ${usd(data.avg.spend_year)}/yr where you live${data.mortgage ? `; the ${usd(data.mortgage.pi_monthly * 12)}/yr mortgage payment stops after ${data.mortgage.payoff.slice(0, 4)}` : ''}. Moving somewhere cheaper? Try −20%.`} />
               <Slider label="Health insurance before 65, per year" value={p.healthcare_yearly} set={set('healthcare_yearly')} min={0} max={20000} step={500} fmt={usd} hint="your employer covers this now; Medicare starts at 65" />
               <Slider label="Social Security per month" value={p.ss_monthly} set={set('ss_monthly')} min={0} max={4500} step={50} fmt={usd} hint="0 = don't count on it. Get your estimate at ssa.gov/myaccount" />
               {p.ss_monthly > 0 && <Slider label="Social Security starts at" value={p.ss_age} set={set('ss_age')} min={62} max={70} step={1} fmt={(v) => `age ${v}`} />}
@@ -284,7 +284,7 @@ function NetWorthTab({ rows, p }: { rows: YearRow[]; p: Plan }) {
           <h2>Milestones</h2>
           {milestones.map((m) => <div key={m.t} className="row"><div className="row-main"><div className="row-title">{moneyShort(m.t)} net worth</div></div><div className="row-amt">age {m.row!.age} · {m.row!.year}</div></div>)}
           <div className="row"><div className="row-main"><div className="row-title">Retire</div></div><div className="row-amt">age {p.retire_age}</div></div>
-          <p className="muted small">Includes home equity. The home grows at {p.home_growth?.toFixed(1)}% a year after inflation (set on the Retirement tab, from the your area area's long-run pace).</p>
+          <p className="muted small">Includes home equity. The home grows at {p.home_growth?.toFixed(1)}% a year after inflation (set on the Retirement tab, from your area's long-run pace).</p>
         </div>
       </div>
     </>

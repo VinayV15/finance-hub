@@ -197,7 +197,7 @@ export function Mortgage() {
         </div>
         <div className="card">
           <h2>Match your real balance</h2>
-          <p className="muted small" style={{ marginTop: -4 }}>The balance here is an estimate. Enter the principal balance from a Servicer statement and the model starts from the real number on that date.</p>
+          <p className="muted small" style={{ marginTop: -4 }}>The balance here is an estimate. Enter the principal balance from your servicer's statement and the model starts from the real number on that date.</p>
           <div className="form-grid">
             <label className="field">Statement date<input className="input" type="date" value={cp.date} onChange={(e) => setCp({ ...cp, date: e.target.value })} /></label>
             <label className="field">Principal balance<input className="input" inputMode="decimal" value={cp.balance} onChange={(e) => setCp({ ...cp, balance: e.target.value })} /></label>
@@ -217,7 +217,7 @@ export function Mortgage() {
             <label className="field">Your own home value (blank = area index)<input className="input" inputMode="decimal" value={edit.current_value} onChange={(e) => setEdit({ ...edit, current_value: e.target.value })} placeholder={`index: ${Math.round(data.home_value)}`} /></label>
             <button className="btn" onClick={saveEdit}>Save</button>
           </div>
-          <p className="muted small">Escrow changes after the yearly escrow review — update it when Servicer sends the new amount.</p>
+          <p className="muted small">Escrow changes after the yearly escrow review — update it when your servicer sends the new amount.</p>
         </div>
       </div>
     </>

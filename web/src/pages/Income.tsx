@@ -157,7 +157,7 @@ export function Income() {
 
       <div className="card section">
         <h2>Paychecks the app found</h2>
-        <p className="muted small" style={{ marginTop: -4 }}>A paycheck split between Wells Fargo and Wealthfront on the same day counts as one. Off-schedule deposits (reimbursements, bonuses) aren't counted here.</p>
+        <p className="muted small" style={{ marginTop: -4 }}>A paycheck split between two accounts on the same day counts as one. Off-schedule deposits (reimbursements, bonuses) aren't counted here.</p>
         {!data ? <div className="empty">Loading…</div> : data.detected.length === 0 ? <div className="empty">No paychecks detected yet.</div> : (
           <div className="table-wrap">
             <table className="data">

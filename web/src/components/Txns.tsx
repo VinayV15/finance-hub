@@ -12,7 +12,7 @@ const FLOWS: { key: Flow; help: string }[] = [
   { key: 'ignore', help: 'Not real money — left out of every total and chart (e.g. bank verification deposits)' },
 ]
 
-/** "ZELLE TO DOE MOM ON 07/11 REF #RP0Z…" -> "zelle to doe mom" — a sensible default rule pattern. */
+/** "ZELLE TO JANE DOE ON 07/11 REF #RP0Z…" -> "zelle to jane doe" — a sensible default rule pattern. */
 const guessPattern = (name: string) =>
   name.toLowerCase().replace(/\b(on|ref|authorized)\b.*$/, '').replace(/[#*].*$/, '').replace(/\d{3,}.*$/, '').trim()
 

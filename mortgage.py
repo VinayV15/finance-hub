@@ -6,7 +6,7 @@ difference, so the balance still falls exactly as the note-rate schedule says.
 
 Extra money: each payment first covers any scheduled payment that's due (or due within DUE_WINDOW days);
 whatever is left over is counted as extra principal. That's how most servicers apply overpayments, but
-yours might differ — so you can pin the model to the real balance from a Servicer statement
+yours might differ — so you can pin the model to the real balance from your servicer's statement
 ("checkpoints"), and everything after that date starts from the real number.
 """
 import json
@@ -68,7 +68,7 @@ def scheduled_due(cfg, n):
 
 def actual_payments(cfg):
     """Mortgage payments found in your accounts (+ any you entered by hand), oldest first."""
-    pat = cfg.get("match_pattern") or "servicer|servicer"
+    pat = cfg.get("match_pattern") or r"mortgage|home loan"  # set match_pattern to your servicer's name
     with db.conn() as c:
         rows = [dict(r) for r in c.execute("""SELECT t.txn_id, t.date, t.amount, a.institution FROM transactions t
             JOIN txn_class k USING(txn_id) LEFT JOIN accounts a ON a.account_id=t.account_id

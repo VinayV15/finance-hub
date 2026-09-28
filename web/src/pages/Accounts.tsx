@@ -141,7 +141,7 @@ export function Accounts() {
           <h2>{editing ? 'Update balance' : 'Add a manual balance'}</h2>
           <form className="form-grid" onSubmit={saveManual}>
             <label className="field">Name<input className="input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Home mortgage" /></label>
-            <label className="field">Company<input className="input" value={form.institution} onChange={(e) => setForm({ ...form, institution: e.target.value })} placeholder="Servicer" /></label>
+            <label className="field">Company<input className="input" value={form.institution} onChange={(e) => setForm({ ...form, institution: e.target.value })} placeholder="Mortgage servicer" /></label>
             <label className="field">Type
               <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
                 <option value="loan">Loan / mortgage (owed)</option><option value="credit">Credit card (owed)</option>

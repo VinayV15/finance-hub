@@ -24,7 +24,7 @@ HABIT_CATEGORIES = {"Food & Drink", "Transportation", "Shopping", "Travel", "Ent
 
 
 def _merchant_key(name):
-    """'AMERICAN EXPRESS ACH PMT 260818 A0896' -> 'american express ach pmt'; 'Planet Gym' -> 'planetgym fitness'."""
+    """'CARD CO ACH PMT 260818 A0896' -> 'card co ach pmt'; 'Planet Gym' -> 'planet gym'."""
     s = (name or "").lower()
     s = re.sub(r"\b(on|ref|id|conf|web id|ppd|ccd)\b.*$", "", s)
     s = re.sub(r"[#*].*$", "", s)
@@ -58,7 +58,7 @@ def dismiss_recurring(key, undo=False):
 
 def recurring(include_transfers=False):
     """Charges that repeat on a schedule. Bills & subscriptions by default; with include_transfers, also
-    regular moves out of cash accounts (e.g. weekly Robinhood deposits) for the forecast."""
+    regular moves out of cash accounts (e.g. weekly brokerage deposits) for the forecast."""
     flows = ("spend", "transfer") if include_transfers else ("spend",)
     since = (date.today() - timedelta(days=400)).isoformat()
     with db.conn() as c:

@@ -215,7 +215,7 @@ def _months_until(d):
 
 def _accounts():
     with db.conn() as c:
-        return [dict(r) for r in c.execute("SELECT account_id, institution, name, type, subtype, balance FROM accounts")]
+        return [dict(r) for r in c.execute("SELECT account_id, institution, name, type, subtype, balance, source FROM accounts")]
 
 
 def _typical_monthly_spend():
@@ -261,7 +261,7 @@ def goal_progress(g):
     months_left = _months_until(g.get("target_date"))
     if t == "emergency":
         accts = cfg.get("accounts") or [a["account_id"] for a in _accounts()
-                                         if a["type"] == "depository" and a["institution"] in ("Wealthfront", "Wells Fargo")]
+                                         if a["type"] == "depository" and a.get("source") != "venmo"]
         cur = round(sum(a["balance"] or 0 for a in _accounts() if a["account_id"] in accts), 2)
         monthly = _typical_monthly_spend()
         target = round((cfg.get("months") or 6) * monthly, 2) if not g.get("target") else g["target"]
