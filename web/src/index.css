@@ -16,6 +16,11 @@
   --s-saved: #0b0b0b;    /* saved = derived line, drawn in ink */
   --seq: #2a78d6;
   --grid: #e9e8e4;
+  /* categorical slots, fixed order (Transactions charts) */
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300; --c7: #4a3aa7;
+  --c-other: #a9a8a2;
+  /* sequential blue for the calendar heatmap, light -> dark = less -> more */
+  --hm1: #cde2fb; --hm2: #9ec5f4; --hm3: #6da7ec; --hm4: #3987e5; --hm5: #1c5cab;
   /* status — reserved, always paired with an icon/label */
   --good: #0f7b3f;
   --warn-bg: #fff3d1;
@@ -43,6 +48,9 @@
     --s-saved: #ffffff;
     --seq: #3987e5;
     --grid: #2a2a28;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9;
+    --c-other: #6b6a64;
+    --hm1: #104281; --hm2: #1c5cab; --hm3: #2a78d6; --hm4: #5598e7; --hm5: #9ec5f4;
     --good: #3ecf82;
     --warn-bg: #3a2e10;
     --warn: #f5c451;
@@ -193,3 +201,20 @@ table.data td.r, table.data th.r { text-align: right; font-variant-numeric: tabu
 
 .tile.clickable { cursor: pointer; }
 .tile.clickable:hover { border-color: var(--text-2); }
+
+/* Transactions: calendar heatmap */
+.heatmap-wrap { overflow-x: auto; padding-bottom: 4px; }
+.heatmap { display: flex; gap: 2px; width: max-content; }
+.heatmap-col, .heatmap-labels { display: grid; grid-template-rows: repeat(7, 12px); gap: 2px; }
+.heatmap-labels { font-size: 10px; color: var(--muted); line-height: 12px; padding-right: 4px; }
+.hm-cell { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: var(--surface-2); }
+.hm-cell.empty-cell { background: transparent; }
+.hm-1 { background: var(--hm1); } .hm-2 { background: var(--hm2); } .hm-3 { background: var(--hm3); }
+.hm-4 { background: var(--hm4); } .hm-5 { background: var(--hm5); }
+.legend .hm-cell { margin: 0 -4px; }
+
+/* Dashboard: balances right now */
+.balances { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 24px; }
+.bal-head { display: flex; justify-content: space-between; font-weight: 650; font-size: 13.5px; padding-bottom: 4px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.bal-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; padding: 3px 0; }
+.bal-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

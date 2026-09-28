@@ -89,6 +89,15 @@ CREATE TABLE IF NOT EXISTS mortgage_alloc (
     txn_id         TEXT PRIMARY KEY,
     extra          REAL
 );
+-- One row per account per day: its balance (and cost basis for investments). Lets the app measure
+-- investment gains over any date range: value at end - value at start - money you added.
+CREATE TABLE IF NOT EXISTS balance_snapshots (
+    date           TEXT,
+    account_id     TEXT,
+    balance        REAL,
+    cost_basis     REAL,
+    PRIMARY KEY (date, account_id)
+);
 -- Output of classify.py, rebuilt after every sync/import. Never edit by hand.
 CREATE TABLE IF NOT EXISTS txn_class (
     txn_id         TEXT PRIMARY KEY,
@@ -145,6 +154,15 @@ def upsert_txn(c, **t):
     updates = ", ".join(f"{k}=excluded.{k}" for k in cols[1:])
     c.execute(f"INSERT INTO transactions ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "
               f"ON CONFLICT(txn_id) DO UPDATE SET {updates}", vals)
+
+
+def snapshot_balances():
+    """Record today's balance for every account (re-running the same day overwrites it)."""
+    from datetime import date
+    with conn() as c:
+        c.execute("""INSERT OR REPLACE INTO balance_snapshots (date, account_id, balance, cost_basis)
+            SELECT ?, a.account_id, a.balance, (SELECT SUM(h.cost_basis) FROM holdings h WHERE h.account_id=a.account_id)
+            FROM accounts a WHERE a.balance IS NOT NULL""", (date.today().isoformat(),))
 
 
 def get_json(key, default=None):

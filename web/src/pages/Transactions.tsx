@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { qs, type Txn, type TxnTotals } from '../api'
 import { Filters } from '../components/Filters'
+import { CategoryBreakdown, CategoryOverTime, DailyPattern, TopMerchants, type TxnChartData } from '../components/TxnCharts'
 import { TxnDrawer, TxnRow } from '../components/Txns'
 import { FLOW_LABEL, money } from '../format'
 import { useFetch, useRange, useSummary } from '../hooks'
@@ -26,6 +27,14 @@ export function Transactions({ reviewOnly = false }: { reviewOnly?: boolean }) {
     ? { review: 1, limit }
     : { start: r.start, end: r.end, accounts: r.accounts, flows: flow, category, name, invested, q: debounced, limit })}`
   const { data, reload } = useFetch<{ total: number; totals: TxnTotals; rows: Txn[] }>(path)
+  // Charts cover spending (or income, when that's the type picked); other types have nothing to chart.
+  const chartable = !reviewOnly && !invested && ['', 'spend', 'refund', 'spend,refund', 'income'].includes(flow)
+  const filters = { start: r.start, end: r.end, accounts: r.accounts, flows: flow, category, name, q: debounced }
+  const charts = useFetch<TxnChartData>(chartable ? `/api/transactions/charts${qs(filters)}` : null).data
+  const [showCharts, setShowCharts] = useState(() => { try { return localStorage.getItem('txnCharts') !== '0' } catch { return true } })
+  const toggleCharts = () => { const v = !showCharts; setShowCharts(v); try { localStorage.setItem('txnCharts', v ? '1' : '0') } catch { /* private mode */ } }
+  const chartMonths = new Set(charts?.by_month.map((m) => m.month)).size
+  const what = charts?.measure === 'income' ? 'Income' : 'Spending'
   const t = data?.totals
   const isSpend = flow === 'spend,refund' || flow === 'spend'
   const flowLabel = flow === 'spend,refund' ? 'Spending (incl. money back)' : FLOW_LABEL[flow] || flow
@@ -63,6 +72,35 @@ export function Transactions({ reviewOnly = false }: { reviewOnly?: boolean }) {
                 {isSpend && <span>Counted as spending: <b>{money(t.net_spend)}</b></span>}
                 {t.extra_principal > 0 && <span>{money(t.extra_principal)} of it is extra mortgage principal, counted as saving</span>}
               </>}
+            </div>
+          )}
+          {chartable && (
+            <div className="section" style={{ marginBottom: 14 }}>
+              <button className="link-btn" onClick={toggleCharts}>{showCharts ? 'Hide charts' : 'Show charts'}</button>
+              {showCharts && charts && (
+                <>
+                  <div className="card" style={{ marginTop: 8 }}>
+                    <h2>{what} by category, per month</h2>
+                    <CategoryOverTime data={charts} />
+                  </div>
+                  <div className="grid two section" style={{ marginTop: 14 }}>
+                    <div className="card">
+                      <h2>{what} by category</h2>
+                      <p className="muted small" style={{ marginTop: -4 }}>Tap a category to narrow every chart and the list to it.</p>
+                      <CategoryBreakdown data={charts} months={chartMonths} onPick={(c) => setParam('category', c)} />
+                    </div>
+                    <div className="card">
+                      <h2>Top merchants</h2>
+                      <p className="muted small" style={{ marginTop: -4 }}>Tap one to see just its transactions.</p>
+                      <TopMerchants data={charts} onPick={(n) => setParam('name', n)} />
+                    </div>
+                  </div>
+                  <div className="card" style={{ marginTop: 14 }}>
+                    <h2>When you {charts.measure === 'income' ? 'get paid' : 'spend'}</h2>
+                    <DailyPattern data={charts} start={r.start} end={r.end} />
+                  </div>
+                </>
+              )}
             </div>
           )}
         </>

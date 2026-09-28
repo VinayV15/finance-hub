@@ -51,6 +51,19 @@ export interface Totals {
   invested_roth?: number
   invested_other?: number
   extra_principal?: number
+  months?: number
+}
+
+export interface InvestAccount {
+  account_id: string; institution: string; name: string; kind: 'roth' | '401k' | 'ira' | 'brokerage'
+  value: number; cost_basis: number | null; put_in: number; dividends: number; fees: number
+  gain_all_time: number | null; gain_all_time_pct: number | null; gain_range: number | null
+}
+export interface Investments {
+  accounts: InvestAccount[]
+  retirement_estimate: { value: number; put_in: number } | null
+  total: { value: number; put_in: number; dividends: number; fees: number; gain_all_time: number; cost_basis: number; gain_range: number | null }
+  tracking_since: string | null
 }
 
 export interface Summary {
@@ -89,7 +102,7 @@ export interface TxnTotals { n: number; money_out: number; money_in: number; net
 export interface CategoryRow { category: string; amount: number; n: number }
 export interface AccountFlow extends Totals {
   account_id: string; institution: string; name: string; type: string
-  transfers_in: number; transfers_out: number; n: number
+  transfers_in: number; transfers_out: number; net_change: number; balance: number | null; n: number
 }
 export interface Coverage { account_id: string; institution: string; name: string; first: string | null; last: string | null; n: number }
 export interface Rule { id: number; pattern: string; account_id: string | null; direction: string | null; set_flow: string | null; set_category: string | null }

@@ -243,6 +243,12 @@ def api_by_account():
     return jsonify(analytics.by_account(r["start"], r["end"]))
 
 
+@app.route("/api/investments")
+@login_required
+def api_investments():
+    return jsonify(analytics.investments(**_range_args()))
+
+
 @app.route("/api/merchants")
 @login_required
 def api_merchants():
@@ -260,12 +266,8 @@ def api_coverage():
 FLOWS = {"spend", "income", "refund", "transfer", "growth", "ignore"}
 
 
-@app.route("/api/transactions")
-@login_required
-def api_transactions():
-    """List transactions. Totals use the exact same math as the dashboards, so a drill-down always adds up
-    to the number you clicked."""
-    a = request.args
+def _txn_filter(a):
+    """WHERE clause for the Transactions page filters (shared by the list and its charts)."""
     where, args = analytics._where(a.get("start"), a.get("end"),
                                    [x for x in a.get("accounts", "").split(",") if x] or None)
     flows = [f for f in (a.get("flows") or a.get("flow") or "").split(",") if f]
@@ -282,6 +284,16 @@ def api_transactions():
     if a.get("q"):
         where += " AND (lower(t.name) LIKE ? OR lower(k.category) LIKE ?)"
         args += [f"%{a['q'].lower()}%"] * 2
+    return where, args
+
+
+@app.route("/api/transactions")
+@login_required
+def api_transactions():
+    """List transactions. Totals use the exact same math as the dashboards, so a drill-down always adds up
+    to the number you clicked."""
+    a = request.args
+    where, args = _txn_filter(a)
     limit = min(int(a.get("limit", 200)), 2000)
     offset = int(a.get("offset", 0))
     with db.conn() as c:
@@ -298,6 +310,31 @@ def api_transactions():
                 {analytics._FROM} LEFT JOIN txn_overrides o ON o.txn_id=t.txn_id
                 WHERE {where} ORDER BY t.date DESC, t.txn_id LIMIT ? OFFSET ?""", args + [limit, offset])]
     return jsonify(total=t["n"], totals=t, rows=rows)
+
+
+@app.route("/api/transactions/charts")
+@login_required
+def api_txn_charts():
+    """Charts for the Transactions page, over the same filtered rows as the list. Shows income when the
+    type filter is Income, otherwise spending (refunds and paybacks subtract)."""
+    a = request.args
+    where, args = _txn_filter(a)
+    measure = "income" if (a.get("flows") or a.get("flow")) == "income" else "spend"
+    if measure == "income":
+        where += " AND k.flow='income'"; amt = "-t.amount"
+    else:
+        where += " AND k.flow IN ('spend','refund')"; amt = analytics._SPEND_AMT
+    with db.conn() as c:
+        q = lambda sql: [dict(r) for r in c.execute(sql.format(amt=amt, FROM=analytics._FROM, where=where), args)]
+        by_month = q("""SELECT substr(t.date,1,7) AS month, k.category, ROUND(SUM({amt}),2) AS amount
+            {FROM} WHERE {where} GROUP BY 1,2""")
+        categories = q("""SELECT k.category, ROUND(SUM({amt}),2) AS amount, COUNT(*) AS n
+            {FROM} WHERE {where} GROUP BY 1 HAVING SUM({amt}) != 0 ORDER BY 2 DESC""")
+        merchants = q("""SELECT MIN(t.name) AS name, ROUND(SUM({amt}),2) AS amount, COUNT(*) AS n
+            {FROM} WHERE {where} GROUP BY lower(t.name) HAVING SUM({amt}) > 0 ORDER BY 2 DESC LIMIT 15""")
+        daily = q("""SELECT t.date, ROUND(SUM({amt}),2) AS amount, COUNT(*) AS n
+            {FROM} WHERE {where} GROUP BY 1 ORDER BY 1""")
+    return jsonify(measure=measure, by_month=by_month, categories=categories, merchants=merchants, daily=daily)
 
 
 @app.route("/api/transactions/<txn_id>", methods=["PATCH"])
@@ -628,6 +665,7 @@ def _lan_ip():
 
 if __name__ == "__main__":
     db.init()
+    db.snapshot_balances()
     planning.init()
     threading.Thread(target=_auto_sync_loop, daemon=True).start()
     port = int(os.environ.get("PORT", "8750"))

@@ -92,7 +92,83 @@ def cashflow(start=None, end=None, group="month", accounts=None):
         p["retirement"] = ret.get(p["period"], 0)
     total = _finish(total)
     total["retirement"] = round(sum(ret.values()), 2)
+    with db.conn() as c:  # months with any activity, for per-month averages
+        total["months"] = c.execute(f"SELECT COUNT(DISTINCT substr(t.date,1,7)) {_FROM} WHERE {where}", args).fetchone()[0]
     return {"periods": periods, "total": total}
+
+
+# ---------- investments ----------
+
+def _snapshot_on(c, account_id, day):
+    """Latest recorded balance on or before a day, as (date, balance)."""
+    r = c.execute("SELECT date, balance FROM balance_snapshots WHERE account_id=? AND date<=? ORDER BY date DESC LIMIT 1",
+                  (account_id, day)).fetchone()
+    return (r["date"], r["balance"]) if r else (None, None)
+
+
+def investments(start=None, end=None, accounts=None):
+    """Each investment account: what it's worth now, what you put in during the range, and what it earned.
+
+    Earnings over a range = value at the end - value at the start - money you moved in (moves between your
+    own accounts count, e.g. brokerage -> Roth is money into the Roth). That needs a recorded balance at the
+    start of the range; balances are recorded daily from the first time this runs. Until then, the gain on
+    what you hold now (value - what you paid) is the honest all-time number."""
+    today = date.today().isoformat()
+    where, args = _where(start, end, None, "a.type='investment'")
+    with db.conn() as c:
+        accts = [dict(r) for r in c.execute("""SELECT a.account_id, a.institution, a.name, a.subtype, a.balance AS value,
+                (SELECT SUM(h.cost_basis) FROM holdings h WHERE h.account_id=a.account_id) AS cost_basis
+            FROM accounts a WHERE a.type='investment' ORDER BY a.balance DESC""")]
+        if accounts:
+            accts = [a for a in accts if a["account_id"] in accounts]
+        flows = {r["account_id"]: dict(r) for r in c.execute(f"""SELECT t.account_id,
+                ROUND(SUM({_INVESTED}), 2) AS put_in,
+                ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS dividends,
+                ROUND(SUM(CASE WHEN k.kind='invest_fee' THEN t.amount ELSE 0 END), 2) AS fees
+            {_FROM} WHERE {where} GROUP BY t.account_id""", args)}
+        first_snap = c.execute("SELECT MIN(date) FROM balance_snapshots").fetchone()[0]
+        for a in accts:
+            f = flows.get(a["account_id"], {})
+            a["put_in"] = f.get("put_in") or 0
+            a["dividends"] = f.get("dividends") or 0
+            a["fees"] = f.get("fees") or 0
+            a["kind"] = "roth" if "roth" in (a["subtype"] or "").lower() else \
+                "401k" if "401" in (a["subtype"] or "") else \
+                "ira" if "ira" in (a["subtype"] or "").lower() else "brokerage"
+            a["gain_all_time"] = round(a["value"] - a["cost_basis"], 2) if a["cost_basis"] else None
+            a["gain_all_time_pct"] = round(a["gain_all_time"] / a["cost_basis"], 4) if a["cost_basis"] else None
+            # Range earnings, when a balance was recorded at (or before) the start of the range.
+            a["gain_range"] = None
+            if start:
+                s_day, s_val = _snapshot_on(c, a["account_id"], start)
+                e_day, e_val = (today, a["value"]) if not end or end >= today else _snapshot_on(c, a["account_id"], end)
+                if s_day and e_day and e_val is not None:
+                    moved = c.execute("""SELECT COALESCE(SUM(-t.amount), 0) FROM transactions t JOIN txn_class k USING(txn_id)
+                        WHERE t.account_id=? AND k.kind IN ('invest_contribution','invest_withdrawal')
+                        AND t.date > ? AND t.date <= ?""", (a["account_id"], s_day, e_day)).fetchone()[0]
+                    a["gain_range"] = round(e_val - s_val - moved, 2)
+    # 401(k) isn't linked yet: estimate from paychecks (all accounts view only), contributions with no market gains.
+    est = None
+    if not accounts and not has_linked_401k():
+        all_time = sum(retirement_by_period(None, None, "year").values())
+        in_range = sum(retirement_by_period(start, end, "year").values())
+        if all_time:
+            est = {"value": round(all_time, 2), "put_in": round(in_range, 2)}
+    have_range = all(a["gain_range"] is not None for a in accts) and bool(accts)
+    tot = lambda k: round(sum(a[k] or 0 for a in accts), 2)
+    return {
+        "accounts": accts,
+        "retirement_estimate": est,
+        "total": {
+            "value": round(tot("value") + (est["value"] if est else 0), 2),
+            "put_in": round(tot("put_in") + (est["put_in"] if est else 0), 2),
+            "dividends": tot("dividends"), "fees": tot("fees"),
+            "gain_all_time": tot("gain_all_time"),
+            "cost_basis": tot("cost_basis"),
+            "gain_range": tot("gain_range") if have_range else None,
+        },
+        "tracking_since": first_snap,
+    }
 
 
 def by_category(start=None, end=None, accounts=None, flow="spend"):
@@ -114,7 +190,8 @@ def by_account(start=None, end=None):
         rows = c.execute(f"""SELECT a.account_id, a.institution, a.name, a.type, {_SELECT_TOTALS},
             ROUND(SUM(CASE WHEN k.flow='transfer' AND t.amount<0 THEN -t.amount ELSE 0 END), 2) AS transfers_in,
             ROUND(SUM(CASE WHEN k.flow='transfer' AND t.amount>0 THEN t.amount ELSE 0 END), 2) AS transfers_out,
-            COUNT(*) AS n
+            ROUND(SUM(-t.amount), 2) AS net_change,  -- everything in minus everything out = how the balance moved
+            a.balance, COUNT(*) AS n
             {_FROM} WHERE {where} GROUP BY a.account_id ORDER BY a.institution, a.name""", args).fetchall()
     return [_finish(r) for r in rows]
 
@@ -263,10 +340,17 @@ def paycheck_dates(start=None, end=None):
         return [r[0] for r in c.execute(f"SELECT DISTINCT t.date {_FROM} WHERE {where} ORDER BY t.date", args)]
 
 
+def has_linked_401k():
+    with db.conn() as c:
+        return c.execute("SELECT 1 FROM accounts WHERE type='investment' AND lower(COALESCE(subtype,'')) LIKE '%401%'"
+                         ).fetchone() is not None
+
+
 def retirement_by_period(start=None, end=None, group="month"):
-    """Estimated 401(k) money (yours + match) per period, using the pay settings in effect on each payday."""
+    """Estimated 401(k) money (yours + match) per period, using the pay settings in effect on each payday.
+    Once a real 401(k) account is linked its own transactions count instead, so this returns nothing."""
     history = pay_history()
-    if not history:
+    if not history or has_linked_401k():
         return {}
     where, args = _where(start, end, None, "k.kind IN ('paycheck','paycheck_bonus')")
     with db.conn() as c:

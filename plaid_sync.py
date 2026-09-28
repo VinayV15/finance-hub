@@ -111,6 +111,7 @@ def sync_all():
     with db.conn() as c:
         ids = [r["item_id"] for r in c.execute("SELECT item_id FROM items WHERE env=?", (ENV,))]
     results = {i: sync_item(i) for i in ids}
+    db.snapshot_balances()
     db.set_meta("last_sync", _now())
     return results
 

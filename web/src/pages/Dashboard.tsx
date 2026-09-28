@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { qs, type AccountFlow, type CategoryRow, type Coverage, type Totals } from '../api'
+import { qs, type Account, type AccountFlow, type Mortgage, type CategoryRow, type Coverage, type Investments, type Totals } from '../api'
 import { CashflowChart, HBarList } from '../components/Charts'
 import { Filters } from '../components/Filters'
 import { money, niceDate, pct } from '../format'
-import { useFetch, useRange } from '../hooks'
+import { useFetch, useRange, useSummary } from '../hooks'
 
 type Group = 'week' | 'month' | 'quarter' | 'year'
+
+function acctRow(a: Account) {
+  return { key: a.account_id, name: a.name, sub: a.institution || '', value: a.balance || 0 }
+}
 
 export function Dashboard() {
   const r = useRange()
@@ -19,6 +23,9 @@ export function Dashboard() {
   const merchants = useFetch<{ name: string; amount: number; n: number; paid: number; extra_principal: number }[]>(`/api/merchants${qs(q)}`).data || []
   const perAcct = useFetch<AccountFlow[]>(`/api/by_account${qs({ start: r.start, end: r.end })}`).data || []
   const coverage = useFetch<Coverage[]>('/api/coverage').data || []
+  const { summary } = useSummary()
+  const mort = useFetch<Mortgage>('/api/mortgage').data
+  const inv = useFetch<Investments>(`/api/investments${qs(q)}`).data
 
   const t = cf?.total
   // Accounts whose history starts after the range begins -> numbers for the range are incomplete.
@@ -31,6 +38,24 @@ export function Dashboard() {
   }
   const gaps = [...firstByInst].filter(([, first]) => !r.start || first > r.start).map(([institution, first]) => ({ institution, first }))
   const months = cf?.periods.length || 1
+
+  const it = inv?.total
+  const KIND_LABEL = { roth: 'Roth IRA', '401k': '401(k)', ira: 'IRA', brokerage: 'Brokerage' }
+  const gainPct = it?.cost_basis ? it.gain_all_time / it.cost_basis : null
+  const est = inv?.retirement_estimate
+  const putInLinked = (it?.put_in || 0) - (est?.put_in || 0)
+
+  // Balances right now, grouped. Credit cards and the mortgage are money owed.
+  const accts = summary?.accounts || []
+  const GROUPS: { label: string; owed?: boolean; rows: { key: string; name: string; sub: string; value: number; note?: string }[] }[] = [
+    { label: 'Cash', rows: accts.filter((a) => a.type === 'depository').map(acctRow) },
+    { label: 'Investments', rows: [...accts.filter((a) => a.type === 'investment').map(acctRow),
+      ...(est ? [{ key: '401k', name: '401(k)', sub: 'estimated from paychecks', value: est.value, note: 'est.' }] : [])] },
+    { label: 'Credit cards', owed: true, rows: accts.filter((a) => a.type === 'credit').map(acctRow) },
+    { label: 'Loans', owed: true, rows: [...accts.filter((a) => a.type === 'loan').map(acctRow),
+      ...(mort?.config && !accts.some((a) => a.type === 'loan' && a.subtype === 'mortgage')
+        ? [{ key: 'mortgage', name: 'Mortgage', sub: mort.config.servicer || mort.config.lender, value: mort.balance }] : [])] },
+  ].filter((g) => g.rows.length)
 
   const toTxns = (params: Record<string, string>) => nav(`/transactions${qs(params)}`)
 
@@ -49,9 +74,44 @@ export function Dashboard() {
       <div className="tiles">
         <div className="tile clickable" onClick={() => toTxns({ flows: 'income' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Income</div><div className="value">{money(t?.income, { cents: false })}</div><div className="sub">{money(t?.paychecks, { cents: false })} paychecks + {money((t?.income || 0) - (t?.paychecks || 0), { cents: false })} other (interest, tax refund…)</div></div>
         <div className="tile clickable" onClick={() => toTxns({ flows: 'spend,refund' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spending</div><div className="value">{money(t?.spend, { cents: false })}</div><div className="sub">{money((t?.spend || 0) / months, { cents: false })} / {group} avg · after {money(t?.refunds, { cents: false })} refunds, paybacks & reimbursements{t?.extra_principal ? <> · excludes {money(t.extra_principal, { cents: false })} extra mortgage principal (saving)</> : null}</div></div>
-        <div className="tile"><div className="label">Saved</div><div className={`value ${(t?.saved || 0) < 0 ? 'neg' : ''}`}>{money(t?.saved, { cents: false })}</div><div className="sub">{pct(t?.savings_rate)} of income</div></div>
-        <div className="tile clickable" onClick={() => toTxns({ invested: '1' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested</div><div className="value">{money(t?.invested, { cents: false })}</div><div className="sub">Roth IRA {money(t?.invested_roth, { cents: false })} · other {money(t?.invested_other, { cents: false })}{t?.retirement ? <> · plus {money(t.retirement, { cents: false })} into your 401(k) from paychecks (est., you + match)</> : null}</div></div>
-        <div className="tile"><div className="label">Investment earnings</div><div className="value">{money(t?.growth, { cents: false })}</div><div className="sub">dividends & interest inside accounts</div></div>
+        <div className="tile"><div className="label">Saved</div><div className={`value ${(t?.saved || 0) < 0 ? 'neg' : ''}`}>{money(t?.saved, { cents: false })}</div><div className="sub"><b>{money((t?.saved || 0) / (t?.months || 1), { cents: false })} / month</b> avg over {t?.months || 0} {t?.months === 1 ? 'month' : 'months'} · {pct(t?.savings_rate)} of income</div></div>
+        <div className="tile clickable" onClick={() => toTxns({ invested: '1' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested (worth now)</div><div className="value">{money(it?.value, { cents: false })}</div><div className="sub">
+          {inv?.accounts.map((a) => <span key={a.account_id}>{KIND_LABEL[a.kind]} {money(a.value, { cents: false })} · </span>)}
+          {est && <span>401(k) ~{money(est.value, { cents: false })} (est. from paychecks, no gains) · </span>}
+          put in this range: {money(putInLinked, { cents: false })}{est?.put_in ? <> + ~{money(est.put_in, { cents: false })} 401(k)</> : null}
+        </div></div>
+        <div className="tile"><div className="label">Investment earnings</div>
+          {it?.gain_range != null ? <>
+            <div className={`value ${it.gain_range < 0 ? 'neg' : ''}`}>{money(it.gain_range, { cents: false, sign: true })}</div>
+            <div className="sub">in this range: price changes + {money(it.dividends, { cents: false })} dividends & interest, after {money(it.fees, { cents: false })} fees</div>
+          </> : <>
+            <div className={`value ${(it?.gain_all_time || 0) < 0 ? 'neg' : ''}`}>{money(it?.gain_all_time, { cents: false, sign: true })}</div>
+            <div className="sub">{pct(gainPct)} up on what you hold now vs. what you paid (all time{est ? ', 401(k) not included' : ''}) · {money(it?.dividends, { cents: false })} dividends & interest in this range{inv?.tracking_since ? ` · gains for a date range are tracked from ${niceDate(inv.tracking_since)}` : ''}</div>
+          </>}
+        </div>
+      </div>
+
+      <div className="card section">
+        <div className="group-head">
+          <h2>Balances right now</h2>
+          <span className="muted small">not affected by the date range</span>
+        </div>
+        <div className="balances">
+          {GROUPS.map((g) => {
+            const sum = g.rows.reduce((s, r) => s + r.value, 0)
+            return (
+              <div key={g.label}>
+                <div className="bal-head"><span>{g.label}{g.owed ? ' (owed)' : ''}</span><b className={`num ${g.owed ? 'neg' : ''}`}>{money(g.owed ? -sum : sum, { cents: false })}</b></div>
+                {g.rows.map((r) => (
+                  <div key={r.key} className="bal-row">
+                    <span>{r.name}<span className="muted small"> · {r.sub}</span></span>
+                    <span className="num">{r.note ? '~' : ''}{money(r.value, { cents: false })}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       <div className="card">
@@ -88,20 +148,26 @@ export function Dashboard() {
         </div>
         <div className="card">
           <h2>Where the money lives</h2>
-          <p className="muted small" style={{ marginTop: -4 }}>Transfers between your accounts are shown separately and never count as spending.</p>
+          <p className="muted small" style={{ marginTop: -4 }}>"Change in range" is how much each balance actually grew or shrank (everything in minus everything out). Paychecks that land in one account and then move to another show as earned there, then moved out; moves between your accounts never count as spending.</p>
           <div className="table-wrap">
             <table className="data">
-              <thead><tr><th>Account</th><th className="r">In</th><th className="r">Spent</th><th className="r">Moved in</th><th className="r">Moved out</th></tr></thead>
+              <thead><tr><th>Account</th><th className="r">Balance now</th><th className="r">Change in range</th><th className="r">Earned</th><th className="r">Spent</th><th className="r">Net moved</th></tr></thead>
               <tbody>
-                {perAcct.map((a) => (
-                  <tr key={a.account_id}>
-                    <td>{a.institution}<div className="muted small">{a.name}</div></td>
-                    <td className="r">{money(a.income, { cents: false })}</td>
-                    <td className="r">{money(a.spend, { cents: false })}</td>
-                    <td className="r muted">{money(a.transfers_in, { cents: false })}</td>
-                    <td className="r muted">{money(a.transfers_out, { cents: false })}</td>
-                  </tr>
-                ))}
+                {perAcct.map((a) => {
+                  const moved = (a.transfers_in || 0) - (a.transfers_out || 0)
+                  return (
+                    <tr key={a.account_id}>
+                      <td>{a.institution}<div className="muted small">{a.name}</div></td>
+                      <td className="r">{money(a.type === 'credit' || a.type === 'loan' ? -(a.balance || 0) : a.balance, { cents: false })}</td>
+                      {a.type === 'investment'
+                        ? <td className="r muted" title="Market moves aren't transactions, so they aren't in this column. See Investment earnings.">—</td>
+                        : <td className={`r ${a.net_change < 0 ? 'neg' : ''}`}><b>{money(a.net_change, { cents: false, sign: true })}</b></td>}
+                      <td className="r">{money(a.income, { cents: false })}</td>
+                      <td className="r">{money(a.spend, { cents: false })}</td>
+                      <td className="r muted">{money(moved, { cents: false, sign: true })}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
