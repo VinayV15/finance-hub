@@ -27,7 +27,7 @@ const NAV = [
   { to: '/goals', label: 'Goals', icon: 'goals' },
   { to: '/recurring', label: 'Bills', icon: 'recurring' },
   { to: '/forecast', label: 'Forecast', icon: 'forecast' },
-  { to: '/projection', label: 'Projection', icon: 'projection' },
+  { to: '/projection', label: 'Plan & retire', icon: 'projection' },
   { to: '/income', label: 'Income', icon: 'income', section: 'Details' },
   { to: '/taxes', label: 'Taxes', icon: 'taxes' },
   { to: '/mortgage', label: 'Mortgage', icon: 'mortgage' },

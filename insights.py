@@ -431,43 +431,6 @@ def alerts():
     return sorted([a for a in out if a["id"] not in gone], key=lambda a: order[a["level"]])
 
 
-# ---------- long-term projection (the math runs in the browser; this supplies today's numbers) ----------
-
-def projection_inputs():
-    months = planning._last_full_months(6)
-    start, _ = planning._month_bounds(months[0])
-    _, end = planning._month_bounds(months[-1])
-    six = analytics.cashflow(start, end)["total"]
-    y12 = planning._last_full_months(12)
-    s12, _ = planning._month_bounds(y12[0])
-    _, e12 = planning._month_bounds(y12[-1])
-    year = analytics.cashflow(s12, e12)["total"]
-    with db.conn() as c:
-        cash = c.execute("SELECT COALESCE(SUM(balance),0) FROM accounts WHERE type='depository'").fetchone()[0]
-        invested = c.execute("SELECT COALESCE(SUM(balance),0) FROM accounts WHERE type='investment'").fetchone()[0]
-        other_debt = c.execute("SELECT COALESCE(SUM(balance),0) FROM accounts WHERE type IN ('credit','loan')").fetchone()[0]
-    inv = analytics.investments()
-    k401_now = (inv.get("retirement_estimate") or {}).get("value", 0)
-    b = analytics.pay_breakdown()
-    home = analytics.home_position()
-    sched = []
-    if home:
-        import mortgage
-        m = mortgage.summary()
-        sched = [{"year": int(y["year"]), "balance": y["end_balance"]} for y in m["years"]]
-    return {
-        "cash": round(cash, 2), "invested": round(invested + k401_now, 2), "k401_now": round(k401_now, 2),
-        "other_debt": round(other_debt, 2),
-        "monthly_saved": round(six["saved"] / 6, 2), "monthly_invested": round(six["invested"] / 6, 2),
-        "k401_per_year": round(b["per_year"]["retirement"] + b["per_year"]["employer_match"], 2) if b else 0,
-        "annual_spending": round(year["spend"], 2),
-        "home_value": home["home_value"] if home else 0,
-        "mortgage": home["mortgage"] if home else 0,
-        "mortgage_by_year": sched,
-        "months_used": months,
-    }
-
-
 # ---------- monthly recap ----------
 
 def recap_months():
@@ -551,4 +514,106 @@ def recap(month=None):
         "budgets": {"count": len(budgeted), "over": len(over)},
         "net_worth": {"start": nw_start["net_worth"] if nw_start else None, "end": nw_end["net_worth"] if nw_end else None},
         "highlights": hl,
+    }
+
+
+# ---------- retirement & goals planner (the simulation runs in the browser; this supplies the facts) ----------
+
+PLAN_DEFAULTS = {
+    "birth_year": None, "retire_age": 60, "plan_to_age": 95,
+    "cash_monthly": None, "brokerage_monthly": None, "roth_yearly": None, "k401_yearly": None,
+    "stock_return": 7.0, "inflation": 2.5, "cash_apy": None, "home_growth": None,
+    "salary_growth": 1.0, "spend_change_pct": 0, "healthcare_yearly": 7000, "ss_monthly": 0, "ss_age": 67,
+    "tax_401k": 12, "tax_brokerage": 5, "cash_floor_months": 6,
+}
+
+
+def plan_settings():
+    return {**PLAN_DEFAULTS, **(db.get_json("plan", {}) or {})}
+
+
+def save_plan_settings(values):
+    cur = db.get_json("plan", {}) or {}
+    for k, v in values.items():
+        if k in PLAN_DEFAULTS:
+            cur[k] = v
+    db.set_json("plan", cur)
+
+
+def plan_inputs():
+    """Everything the planner needs: balances by tax bucket, what you actually earn/spend/save, interest rates
+    your cash really earns, the mortgage, home value outlook, and your goals."""
+    import home
+    import mortgage
+    today = date.today()
+    months = planning._last_full_months(6)
+    s6, _ = planning._month_bounds(months[0]); _, e6 = planning._month_bounds(months[-1])
+    six = analytics.cashflow(s6, e6)["total"]
+    y12 = planning._last_full_months(12)
+    s12, _ = planning._month_bounds(y12[0]); _, e12 = planning._month_bounds(y12[-1])
+    year = analytics.cashflow(s12, e12)["total"]
+    with db.conn() as c:
+        accts = [dict(r) for r in c.execute("SELECT account_id, name, type, subtype, balance FROM accounts WHERE balance IS NOT NULL")]
+        basis = {r["account_id"]: r["b"] for r in c.execute("SELECT account_id, SUM(cost_basis) AS b FROM holdings GROUP BY account_id")}
+        interest = c.execute(f"""SELECT COALESCE(SUM(-t.amount),0) {analytics._FROM} WHERE k.kind='interest'
+            AND a.type='depository' AND t.date BETWEEN ? AND ?""", (s12, e12)).fetchone()[0]
+        brokerage_in = c.execute(f"""SELECT COALESCE(SUM({analytics._INVESTED}),0) {analytics._FROM}
+            WHERE t.date BETWEEN ? AND ? AND a.type='investment' AND lower(COALESCE(a.subtype,'')) NOT LIKE '%roth%'
+            AND lower(COALESCE(a.subtype,'')) NOT LIKE '%ira%' AND lower(COALESCE(a.subtype,'')) NOT LIKE '%401%'""", (s6, e6)).fetchone()[0]
+    sub = lambda a: (a["subtype"] or "").lower()
+    cash = sum(a["balance"] for a in accts if a["type"] == "depository")
+    cards = sum(a["balance"] for a in accts if a["type"] in ("credit",))
+    roth = [a for a in accts if a["type"] == "investment" and "roth" in sub(a)]
+    k401 = [a for a in accts if a["type"] == "investment" and ("401" in sub(a) or ("ira" in sub(a) and "roth" not in sub(a)))]
+    brokerage = [a for a in accts if a["type"] == "investment" and a not in roth and a not in k401]
+    k401_bal = sum(a["balance"] for a in k401)
+    k401_est = None
+    if not k401:
+        k401_est = (analytics.investments().get("retirement_estimate") or {}).get("value", 0)
+        k401_bal = k401_est
+    avg_cash = cash or 1
+    cash_apy = round(interest / avg_cash * 100, 2) if interest else 0.0
+
+    b = analytics.pay_breakdown()
+    take_home_month = round(b["per_year"]["take_home"] / 12, 2) if b else None
+    cfg = mortgage.get_config()
+    m = mortgage.summary() if cfg else None
+    est = home.estimate(cfg) if cfg else None
+    tax_rows = tax_year()
+    goals = [
+        {"id": g["id"], "type": g["type"], "name": g["name"], "target": g["progress"].get("target"), "target_date": g.get("target_date"),
+         "current": g["progress"].get("current"), "monthly_needed": g["progress"].get("monthly_needed")}
+        for g in planning.goals_with_progress()
+    ]
+    cats = planning.suggestions()
+    return {
+        "today": today.isoformat(),
+        "buckets": {
+            "cash": round(cash - cards, 2), "cash_gross": round(cash, 2), "cards": round(cards, 2),
+            "brokerage": round(sum(a["balance"] for a in brokerage), 2),
+            "brokerage_basis": round(sum(basis.get(a["account_id"]) or a["balance"] for a in brokerage), 2),
+            "roth": round(sum(a["balance"] for a in roth), 2),
+            "roth_basis": round(sum(basis.get(a["account_id"]) or a["balance"] for a in roth), 2),
+            "k401": round(k401_bal, 2), "k401_estimated": k401_est is not None,
+        },
+        "cash_apy": cash_apy,
+        "avg": {
+            "take_home_month": take_home_month,
+            "income_month": round(six["income"] / 6, 2), "spend_month": round(six["spend"] / 6, 2),
+            "saved_month": round(six["saved"] / 6, 2), "invested_month": round(six["invested"] / 6, 2),
+            "brokerage_month": round(brokerage_in / 6, 2), "spend_year": round(year["spend"], 2),
+        },
+        "roth_this_year": tax_rows["roth"]["contributed"], "roth_limit": tax_rows["roth"]["limit"],
+        "k401_yearly": round(b["per_year"]["retirement"] + b["per_year"]["employer_match"], 2) if b else 0,
+        "k401_limit": tax_rows["k401"]["limit"],
+        "mortgage": {
+            "balance": m["balance"], "pi_monthly": m["note_pi"], "escrow_monthly": m["config"].get("escrow_monthly") or 0,
+            "payoff": m["payoff_projected"],
+            "by_year": [{"year": int(y["year"]), "balance": y["end_balance"]} for y in m["years"]],
+        } if m else None,
+        "home": {"value": est["value"], "source": est["source"], "stats": est["stats"]} if est else None,
+        "goals": goals,
+        "categories": [{"category": k, "avg": v["avg"], "suggested": v["suggested"]} for k, v in sorted(cats.items(), key=lambda kv: -kv[1]["avg"])],
+        "budgets": planning.get_budgets(),
+        "settings": plan_settings(),
     }

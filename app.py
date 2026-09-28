@@ -722,10 +722,12 @@ def api_home_value():
     return jsonify(home.estimate(mortgage.get_config()))
 
 
-@app.route("/api/projection")
+@app.route("/api/plan", methods=["GET", "PUT"])
 @login_required
-def api_projection():
-    return jsonify(insights.projection_inputs())
+def api_plan():
+    if request.method == "PUT":
+        insights.save_plan_settings(request.get_json() or {})
+    return jsonify(insights.plan_inputs())
 
 
 @app.route("/api/recap")
