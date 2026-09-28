@@ -4,6 +4,11 @@ Writes one SQL script to stdout (COPY blocks inside a single transaction); pipe 
 
     python3 scripts/copy_to_postgres.py finance-production.db | psql "$DATABASE_URL"
 
+With --inserts it writes plain INSERT statements instead, one file per table into a folder, for tools that
+can't stream COPY (e.g. `supabase db query --linked -f <file>`):
+
+    python3 scripts/copy_to_postgres.py finance-production.db --inserts out/
+
 Existing rows in the target tables are replaced. Run it once when switching over.
 """
 import csv
@@ -14,6 +19,44 @@ import sys
 TABLES = ["items", "accounts", "transactions", "holdings", "liabilities", "meta", "txn_overrides", "rules",
           "txn_class", "mortgage_alloc", "budgets", "goals", "goal_contribs", "windfalls", "balance_snapshots"]
 IDENTITY = {"rules": "id", "goal_contribs": "id"}
+
+
+def sql_value(v):
+    if v is None:
+        return "NULL"
+    if isinstance(v, float):
+        return repr(v)
+    if isinstance(v, int):
+        return str(v)
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def main_inserts(path, out_dir, batch=400):
+    """One file per table: delete, then batched INSERTs (in rowid order, so transactions keep their order)."""
+    import os
+    os.makedirs(out_dir, exist_ok=True)
+    src = sqlite3.connect(path)
+    files = []
+    for n, table in enumerate(TABLES):
+        cols = [r[1] for r in src.execute(f"PRAGMA table_info({table})")]
+        order = " ORDER BY rowid" if table == "transactions" else ""
+        rows = list(src.execute(f"SELECT {', '.join(cols)} FROM {table}{order}"))
+        parts = [f"DELETE FROM public.{table};"]
+        for i in range(0, len(rows), batch):
+            vals = ",\n".join("(" + ", ".join(sql_value(v) for v in r) + ")" for r in rows[i:i + batch])
+            parts.append(f"INSERT INTO public.{table} ({', '.join(cols)}) VALUES\n{vals};")
+        if table in IDENTITY:
+            col = IDENTITY[table]
+            parts.append(f"PERFORM setval(pg_get_serial_sequence('public.{table}', '{col}'), "
+                         f"COALESCE((SELECT MAX({col}) FROM public.{table}), 0) + 1, false);")
+        f = os.path.join(out_dir, f"{n:02d}_{table}.sql")
+        # One command per file (some tools run a single statement); a DO block is also all-or-nothing.
+        body = "\n".join(parts)
+        assert "$fh$" not in body
+        open(f, "w").write("DO $fh$ BEGIN\n" + body + "\nEND $fh$;\n")
+        files.append((f, len(rows)))
+    for f, n in files:
+        print(f"{f}\t{n}")
 
 
 def main(path):
@@ -39,4 +82,7 @@ def main(path):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    if len(sys.argv) > 3 and sys.argv[2] == "--inserts":
+        main_inserts(sys.argv[1], sys.argv[3])
+    else:
+        main(sys.argv[1])
