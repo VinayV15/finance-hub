@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { money, moneyShort, niceDate, periodLabel } from '../format'
+import { money, moneyShort, motionOK, niceDate, periodLabel } from '../format'
 import { GradDefs, HBarList } from './Charts'
 
 export interface TxnChartData {
@@ -51,12 +51,13 @@ function OverTimeTip({ active, payload, series }: { active?: boolean; payload?: 
           <b className="num">{money(p[s.key] as number, { cents: false })}</b>
         </div>
       ))}
+      <div className="tt-hint">Click a segment to see those transactions</div>
     </div>
   )
 }
 
 /** Each month's total, split by category (stacked). Money back (refunds, paybacks) stacks below zero. */
-export function CategoryOverTime({ data }: { data: TxnChartData }) {
+export function CategoryOverTime({ data, onPick }: { data: TxnChartData; onPick?: (month: string, category?: string) => void }) {
   const [table, setTable] = useState(false)
   if (!data.by_month.length) return <div className="empty">Nothing here for this range.</div>
   const base = seriesFor(data.categories)
@@ -103,8 +104,9 @@ export function CategoryOverTime({ data }: { data: TxnChartData }) {
             <ReferenceLine y={0} stroke="var(--line)" />
             <Tooltip content={<OverTimeTip series={series} />} cursor={{ fill: 'var(--surface-2)' }} />
             {series.map((s, i) => (
-              <Bar key={s.key} isAnimationActive={false} dataKey={s.key} stackId="a" fill={s.color} stroke="var(--surface)" strokeWidth={1.5}
-                   maxBarSize={36} radius={i === series.length - 1 ? [6, 6, 0, 0] : 0} />
+              <Bar key={s.key} isAnimationActive={motionOK} animationDuration={700} dataKey={s.key} stackId="a" fill={s.color} stroke="var(--surface)" strokeWidth={1.5}
+                   maxBarSize={36} radius={i === series.length - 1 ? [6, 6, 0, 0] : 0} style={{ cursor: 'pointer' }}
+                   onClick={(d: unknown) => { const m = (d as { payload?: MonthRow }).payload?.month; if (m) onPick?.(m, s.key === OTHER ? undefined : s.key) }} />
             ))}
           </BarChart>
         </ResponsiveContainer>
@@ -132,7 +134,7 @@ const dayIndex = (d: Date) => (d.getDay() + 6) % 7 // Monday = 0
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 /** Calendar heatmap (one square per day, darker = more) plus the average for each day of the week. */
-export function DailyPattern({ data, start, end }: { data: TxnChartData; start?: string; end?: string }) {
+export function DailyPattern({ data, start, end, onPickDay }: { data: TxnChartData; start?: string; end?: string; onPickDay?: (day: string) => void }) {
   if (!data.daily.length) return <div className="empty">Nothing here for this range.</div>
   const amounts = new Map(data.daily.map((d) => [d.date, d]))
   const first = new Date(`${start && start > data.daily[0].date ? start : data.daily[0].date}T00:00:00`)
@@ -171,8 +173,9 @@ export function DailyPattern({ data, start, end }: { data: TxnChartData; start?:
                   if (!d) return <span key={i} className="hm-cell empty-cell" />
                   const row = amounts.get(isoDay(d))
                   const a = row?.amount || 0
-                  return <span key={i} className={`hm-cell hm-${step(a)}`}
-                               title={`${niceDate(isoDay(d))}: ${money(a)}${row ? ` (${row.n} transactions)` : ''}`} />
+                  return <button key={i} className={`hm-cell hm-${step(a)}`} onClick={() => onPickDay?.(isoDay(d))}
+                                 aria-label={`${niceDate(isoDay(d))}: ${money(a)}`}
+                                 title={`${niceDate(isoDay(d))}: ${money(a)}${row ? ` (${row.n} transactions)` : ''} · click to see them`} />
                 })}
               </div>
             ))}
@@ -180,7 +183,7 @@ export function DailyPattern({ data, start, end }: { data: TxnChartData; start?:
         </div>
         <div className="legend small" style={{ marginTop: 8 }}>
           <span>Less</span>{[0, 1, 2, 3, 4, 5].map((s) => <i key={s} className={`hm-cell hm-${s}`} />)}<span>More</span>
-          <span className="muted">· hover a day for its total</span>
+          <span className="muted">· hover a day for its total, click to see it</span>
         </div>
       </div>
       <div>
@@ -194,7 +197,7 @@ export function DailyPattern({ data, start, end }: { data: TxnChartData; start?:
               <div className="tt"><div className="tt-head">{(payload[0].payload as { day: string }).day}</div>
                 <div className="tt-row"><span>Average</span><b className="num">{money(payload[0].value as number)}</b></div></div>) : null} />
             <GradDefs />
-            <Bar isAnimationActive={false} dataKey="avg" fill="url(#g-seq)" radius={[8, 8, 3, 3]} maxBarSize={32} />
+            <Bar isAnimationActive={motionOK} animationDuration={700} dataKey="avg" fill="url(#g-seq)" radius={[8, 8, 3, 3]} maxBarSize={32} />
           </BarChart>
         </ResponsiveContainer>
       </div>

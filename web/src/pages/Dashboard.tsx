@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { qs, type Account, type AccountFlow, type Mortgage, type CategoryRow, type Coverage, type Investments, type Totals } from '../api'
 import { CashflowChart, HBarList } from '../components/Charts'
 import { Filters } from '../components/Filters'
-import { money, niceDate, pct } from '../format'
+import { money, niceDate, pct, periodLabel, periodRange } from '../format'
+import { MoneyFlow, Num, Sparkline, type FlowNode } from '../components/Viz'
 import { useFetch, useRange, useSummary } from '../hooks'
 
 type Group = 'week' | 'month' | 'quarter' | 'year'
@@ -25,6 +26,7 @@ export function Dashboard() {
   const coverage = useFetch<Coverage[]>('/api/coverage').data || []
   const { summary } = useSummary()
   const mort = useFetch<Mortgage>('/api/mortgage').data
+  const nw = useFetch<{ points: { date: string; invested: number }[] }>('/api/networth_history').data
   const inv = useFetch<Investments>(`/api/investments${qs(q)}`).data
 
   const t = cf?.total
@@ -58,6 +60,37 @@ export function Dashboard() {
   ].filter((g) => g.rows.length)
 
   const toTxns = (params: Record<string, string>) => nav(`/transactions${qs(params)}`)
+  const drill = (period: string, flows?: string) => {
+    const pr = periodRange(period, group)
+    r.setCustom(pr.start, pr.end)
+    toTxns(flows ? { flows } : {})
+  }
+  const periods = cf?.periods || []
+  const plabels = periods.map((p) => periodLabel(p.period))
+  const spark = (k: 'income' | 'spend' | 'saved' | 'invested', color: string) =>
+    <Sparkline values={periods.map((p) => p[k] || 0)} labels={plabels} color={color} />
+
+  // Money flow: where income (and money back) went. Balanced by "kept in cash" or "from savings".
+  const flow = (() => {
+    if (!t) return null
+    const sources: FlowNode[] = incomeCats.filter((c) => c.amount > 0).map((c) => ({
+      label: c.category, amount: c.amount, color: 'var(--s-income)', onClick: () => toTxns({ category: c.category, flows: 'income' }) }))
+    const back = cats.filter((c) => c.amount < 0)
+    if (back.length) sources.push({ label: 'Money back', amount: -back.reduce((s, c) => s + c.amount, 0), color: 'var(--good)',
+      onClick: () => toTxns({ flows: 'refund' }) })
+    const spend = cats.filter((c) => c.amount > 0)
+    const top = spend.slice(0, 6), rest = spend.slice(6)
+    const SPEND_SLOTS = ['--c3', '--c4', '--c6', '--c5', '--c7', '--c2'] // distinct from Invested (lavender) and income (mint)
+    const outs: FlowNode[] = top.map((c, i) => ({ label: c.category, amount: c.amount, color: `var(${SPEND_SLOTS[i]})`,
+      onClick: () => toTxns({ category: c.category, flows: 'spend,refund' }) }))
+    if (rest.length) outs.push({ label: `Other spending (${rest.length})`, amount: rest.reduce((s, c) => s + c.amount, 0), color: 'var(--c-other)',
+      onClick: () => toTxns({ flows: 'spend,refund' }) })
+    if (t.invested > 0) outs.push({ label: 'Invested', amount: t.invested, color: 'var(--s-invest)', onClick: () => toTxns({ invested: '1' }) })
+    const gap = sources.reduce((s, n) => s + n.amount, 0) - outs.reduce((s, n) => s + n.amount, 0)
+    if (gap > 1) outs.push({ label: 'Kept in cash', amount: gap, color: 'var(--seq-2)' })
+    else if (gap < -1) sources.push({ label: 'From savings', amount: -gap, color: 'var(--warn)' })
+    return { sources, outs }
+  })()
 
   return (
     <>
@@ -72,20 +105,21 @@ export function Dashboard() {
       )}
 
       <div className="tiles">
-        <div className="tile clickable" onClick={() => toTxns({ flows: 'income' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Income</div><div className="value">{money(t?.income, { cents: false })}</div><div className="sub">{money(t?.paychecks, { cents: false })} paychecks + {money((t?.income || 0) - (t?.paychecks || 0), { cents: false })} other (interest, tax refund…)</div></div>
-        <div className="tile clickable" onClick={() => toTxns({ flows: 'spend,refund' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spending</div><div className="value">{money(t?.spend, { cents: false })}</div><div className="sub">{money((t?.spend || 0) / months, { cents: false })} / {group} avg · after {money(t?.refunds, { cents: false })} refunds, paybacks & reimbursements{t?.extra_principal ? <> · excludes {money(t.extra_principal, { cents: false })} extra mortgage principal (saving)</> : null}</div></div>
-        <div className="tile"><div className="label">Saved</div><div className={`value ${(t?.saved || 0) < 0 ? 'neg' : ''}`}>{money(t?.saved, { cents: false })}</div><div className="sub"><b>{money((t?.saved || 0) / (t?.months || 1), { cents: false })} / month</b> avg over {t?.months || 0} {t?.months === 1 ? 'month' : 'months'} · {pct(t?.savings_rate)} of income</div></div>
-        <div className="tile clickable" onClick={() => toTxns({ invested: '1' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested (worth now)</div><div className="value">{money(it?.value, { cents: false })}</div><div className="sub">
+        <div className="tile clickable" onClick={() => toTxns({ flows: 'income' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Income</div><div className="value"><Num v={t?.income} /></div>{spark('income', 'var(--s-income)')}<div className="sub">{money(t?.paychecks, { cents: false })} paychecks + {money((t?.income || 0) - (t?.paychecks || 0), { cents: false })} other (interest, tax refund…)</div></div>
+        <div className="tile clickable" onClick={() => toTxns({ flows: 'spend,refund' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spending</div><div className="value"><Num v={t?.spend} /></div>{spark('spend', 'var(--s-spend)')}<div className="sub">{money((t?.spend || 0) / months, { cents: false })} / {group} avg · after {money(t?.refunds, { cents: false })} refunds, paybacks & reimbursements{t?.extra_principal ? <> · excludes {money(t.extra_principal, { cents: false })} extra mortgage principal (saving)</> : null}</div></div>
+        <div className="tile"><div className="label">Saved</div><div className={`value ${(t?.saved || 0) < 0 ? 'neg' : ''}`}><Num v={t?.saved} /></div>{spark('saved', 'var(--accent)')}<div className="sub"><b>{money((t?.saved || 0) / (t?.months || 1), { cents: false })} / month</b> avg over {t?.months || 0} {t?.months === 1 ? 'month' : 'months'} · {pct(t?.savings_rate)} of income</div></div>
+        <div className="tile clickable" onClick={() => toTxns({ invested: '1' })}><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested (worth now)</div><div className="value"><Num v={it?.value} /></div>
+          {nw && <Sparkline values={nw.points.map((p) => p.invested)} labels={nw.points.map((p) => niceDate(p.date))} color="var(--s-invest)" />}<div className="sub">
           {inv?.accounts.map((a) => <span key={a.account_id}>{KIND_LABEL[a.kind]} {money(a.value, { cents: false })} · </span>)}
           {est && <span>401(k) ~{money(est.value, { cents: false })} (est. from paychecks, no gains) · </span>}
           put in this range: {money(putInLinked, { cents: false })}{est?.put_in ? <> + ~{money(est.put_in, { cents: false })} 401(k)</> : null}
         </div></div>
         <div className="tile"><div className="label">Investment earnings</div>
           {it?.gain_range != null ? <>
-            <div className={`value ${it.gain_range < 0 ? 'neg' : ''}`}>{money(it.gain_range, { cents: false, sign: true })}</div>
+            <div className={`value ${it.gain_range < 0 ? 'neg' : 'pos'}`}><Num v={it.gain_range} sign /></div>
             <div className="sub">in this range: price changes + {money(it.dividends, { cents: false })} dividends & interest, after {money(it.fees, { cents: false })} fees</div>
           </> : <>
-            <div className={`value ${(it?.gain_all_time || 0) < 0 ? 'neg' : ''}`}>{money(it?.gain_all_time, { cents: false, sign: true })}</div>
+            <div className={`value ${(it?.gain_all_time || 0) < 0 ? 'neg' : 'pos'}`}><Num v={it?.gain_all_time} sign /></div>
             <div className="sub">{pct(gainPct)} up on what you hold now vs. what you paid (all time{est ? ', 401(k) not included' : ''}) · {money(it?.dividends, { cents: false })} dividends & interest in this range{inv?.tracking_since ? ` · gains for a date range are tracked from ${niceDate(inv.tracking_since)}` : ''}</div>
           </>}
         </div>
@@ -123,7 +157,15 @@ export function Dashboard() {
             ))}
           </div>
         </div>
-        {cf ? <CashflowChart periods={cf.periods} /> : <div className="empty">Loading…</div>}
+        {cf ? <CashflowChart periods={cf.periods} onPick={drill} /> : <div className="empty">Loading…</div>}
+      </div>
+
+      <div className="card section">
+        <div className="group-head">
+          <h2>Where the money went</h2>
+          <span className="muted small">thicker = more dollars · click a stream to see its transactions</span>
+        </div>
+        {flow ? <MoneyFlow sources={flow.sources} outs={flow.outs} /> : <div className="empty">Loading…</div>}
       </div>
 
       <div className="grid two section">

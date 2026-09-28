@@ -4,7 +4,7 @@ import { qs, type Txn, type TxnTotals } from '../api'
 import { Filters } from '../components/Filters'
 import { CategoryBreakdown, CategoryOverTime, DailyPattern, TopMerchants, type TxnChartData } from '../components/TxnCharts'
 import { TxnDrawer, TxnRow } from '../components/Txns'
-import { FLOW_LABEL, money } from '../format'
+import { FLOW_LABEL, money, periodRange } from '../format'
 import { useFetch, useRange, useSummary } from '../hooks'
 
 const PAGE = 100
@@ -81,7 +81,7 @@ export function Transactions({ reviewOnly = false }: { reviewOnly?: boolean }) {
                 <>
                   <div className="card" style={{ marginTop: 8 }}>
                     <h2>{what} by category, per month</h2>
-                    <CategoryOverTime data={charts} />
+                    <CategoryOverTime data={charts} onPick={(m, c) => { const pr = periodRange(m); r.setCustom(pr.start, pr.end); setParam('category', c || '') }} />
                   </div>
                   <div className="grid two section" style={{ marginTop: 14 }}>
                     <div className="card">
@@ -97,7 +97,7 @@ export function Transactions({ reviewOnly = false }: { reviewOnly?: boolean }) {
                   </div>
                   <div className="card" style={{ marginTop: 14 }}>
                     <h2>When you {charts.measure === 'income' ? 'get paid' : 'spend'}</h2>
-                    <DailyPattern data={charts} start={r.start} end={r.end} />
+                    <DailyPattern data={charts} start={r.start} end={r.end} onPickDay={(d) => r.setCustom(d, d)} />
                   </div>
                 </>
               )}

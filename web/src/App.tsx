@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { Icon } from './components/Icons'
+import { QuickSearch } from './components/Search'
 import { RangeProvider, SummaryProvider, ToastProvider, useSummary } from './hooks'
 import { Accounts } from './pages/Accounts'
 import { Budget } from './pages/Budget'
@@ -85,14 +86,21 @@ function Nav({ bottom = false }: { bottom?: boolean }) {
 
 function Shell() {
   const { summary } = useSummary()
+  const [search, setSearch] = useState(false)
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform)
   return (
     <div className="shell">
+      <QuickSearch pages={NAV} open={search} setOpen={setSearch} />
+      <button className="search-fab" onClick={() => setSearch(true)} aria-label="Search"><Icon name="search" /></button>
       <aside className="side">
         <div className="brand">
           <span className="brand-mark" aria-hidden />
           <span>Finance Hub</span>
           {summary && summary.env !== 'production' && <span className="badge warn">Test data</span>}
         </div>
+        <button className="search-trigger" onClick={() => setSearch(true)}>
+          <Icon name="search" size={18} /><span>Search</span><kbd>{mac ? '⌘K' : 'Ctrl K'}</kbd>
+        </button>
         <Nav />
         <div className="spacer" />
         <ThemeToggle />

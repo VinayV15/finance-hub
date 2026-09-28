@@ -243,6 +243,12 @@ def api_by_account():
     return jsonify(analytics.by_account(r["start"], r["end"]))
 
 
+@app.route("/api/networth_history")
+@login_required
+def api_networth_history():
+    return jsonify(analytics.networth_history())
+
+
 @app.route("/api/investments")
 @login_required
 def api_investments():
@@ -282,8 +288,15 @@ def _txn_filter(a):
     if a.get("invested") == "1":  # exactly the rows behind the dashboard's Invested number
         where += f" AND ({analytics._INVESTED}) != 0"
     if a.get("q"):
-        where += " AND (lower(t.name) LIKE ? OR lower(k.category) LIKE ?)"
-        args += [f"%{a['q'].lower()}%"] * 2
+        q = a["q"].strip().lower()
+        try:  # a number searches amounts too ("42.10", "$1,200")
+            amt = float(q.replace("$", "").replace(",", ""))
+        except ValueError:
+            amt = None
+        if amt is not None:
+            where += " AND (lower(t.name) LIKE ? OR ABS(ABS(t.amount) - ?) < 0.5)"; args += [f"%{q}%", amt]
+        else:
+            where += " AND (lower(t.name) LIKE ? OR lower(k.category) LIKE ?)"; args += [f"%{q}%"] * 2
     return where, args
 
 

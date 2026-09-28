@@ -9,6 +9,7 @@ const P: Record<string, string> = {
   income: 'M3 7h18v10H3zM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6 10v4m12-4v4',
   mortgage: 'M3 10.5 12 4l9 6.5M5.5 9v11h13V9M10 20v-5h4v5',
   accounts: 'M3 9 12 4l9 5M4 20h16M6 10v7m4-7v7m4-7v7m4-7v7',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
   sun: 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',

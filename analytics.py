@@ -97,6 +97,44 @@ def cashflow(start=None, end=None, group="month", accounts=None):
     return {"periods": periods, "total": total}
 
 
+# ---------- net worth over time ----------
+
+def networth_history(weeks=52):
+    """Weekly net worth (same definition as the Overview card: account balances, assets minus debts),
+    rebuilt backward from today's balances: a balance last week = today's balance minus what moved since.
+    Investment accounts use recorded daily balances where they exist; before that, only deposits,
+    withdrawals and dividends are known, so market moves are missing (flagged as estimated)."""
+    today = date.today()
+    floor = history_start()
+    days = [today - timedelta(weeks=w) for w in range(weeks, 0, -1)] + [today]
+    days = [d.isoformat() for d in days if not floor or d.isoformat() >= floor]
+    with db.conn() as c:
+        accts = [dict(r) for r in c.execute("SELECT account_id, type, balance FROM accounts WHERE balance IS NOT NULL")]
+        txns = defaultdict(list)
+        for r in c.execute("SELECT account_id, date, amount FROM transactions WHERE pending=0 ORDER BY date"):
+            txns[r["account_id"]].append((r["date"], r["amount"]))
+        snaps = defaultdict(list)
+        for r in c.execute("SELECT account_id, date, balance FROM balance_snapshots ORDER BY date"):
+            snaps[r["account_id"]].append((r["date"], r["balance"]))
+    first_snap = min((v[0][0] for v in snaps.values() if v), default=None)
+    out = []
+    for d in days:
+        cash = invested = debts = 0.0
+        for a in accts:
+            moved_after = sum(amt for dt, amt in txns[a["account_id"]] if dt > d)  # Plaid sign: + = money out
+            if a["type"] in ("credit", "loan"):
+                debts += a["balance"] - moved_after  # owed grows with charges
+                continue
+            if a["type"] == "investment":
+                s = [b for dt, b in snaps[a["account_id"]] if dt <= d]
+                invested += s[-1] if s else a["balance"] + moved_after
+                continue
+            cash += a["balance"] + moved_after
+        out.append({"date": d, "cash": round(cash, 2), "invested": round(invested, 2), "debts": round(debts, 2),
+                    "net_worth": round(cash + invested - debts, 2), "estimated": not first_snap or d < first_snap})
+    return {"points": out, "exact_from": first_snap}
+
+
 # ---------- investments ----------
 
 def _snapshot_on(c, account_id, day):

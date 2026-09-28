@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { GradDefs } from '../components/Charts'
 import { del, post, put, qs, type Mortgage as M, type MortgageRow } from '../api'
-import { money, moneyShort, niceDate, pct } from '../format'
+import { money, moneyShort, motionOK, niceDate, pct } from '../format'
 import { useFetch, useToast } from '../hooks'
 
 const monthYear = (d: string | null) => d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'
@@ -122,8 +122,8 @@ export function Mortgage() {
               <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
               <Tooltip content={<TT />} />
               <Legend wrapperStyle={{ fontSize: 12.5, color: 'var(--text-2)' }} iconType="plainline" />
-              <Area isAnimationActive={false} name="Your loan" dataKey="yours" stroke="var(--s-invest)" strokeWidth={2.5} fill="url(#a-invest)" dot={false} type="monotone" />
-              <Line isAnimationActive={false} name="Lender's schedule" dataKey="lender" stroke="var(--muted)" strokeWidth={2} strokeDasharray="5 4" dot={false} />
+              <Area isAnimationActive={motionOK} animationDuration={700} name="Your loan" dataKey="yours" stroke="var(--s-invest)" strokeWidth={2.5} fill="url(#a-invest)" dot={false} type="monotone" />
+              <Line isAnimationActive={motionOK} animationDuration={700} name="Lender's schedule" dataKey="lender" stroke="var(--muted)" strokeWidth={2} strokeDasharray="5 4" dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -137,9 +137,9 @@ export function Mortgage() {
               <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
               <Tooltip content={<TT />} cursor={{ fill: 'var(--surface-2)' }} />
               <Legend wrapperStyle={{ fontSize: 12.5, color: 'var(--text-2)' }} />
-              <Bar isAnimationActive={false} name="Interest" dataKey="interest" stackId="a" fill="var(--s-spend)" stroke="var(--surface)" strokeWidth={1.5} />
-              <Bar isAnimationActive={false} name="Principal" dataKey="principal" stackId="a" fill="var(--s-invest)" stroke="var(--surface)" strokeWidth={1.5} />
-              <Bar isAnimationActive={false} name="Extra principal" dataKey="extra" stackId="a" fill="var(--s-income)" stroke="var(--surface)" strokeWidth={1.5} radius={[6, 6, 0, 0]} />
+              <Bar isAnimationActive={motionOK} animationDuration={700} name="Interest" dataKey="interest" stackId="a" fill="var(--s-spend)" stroke="var(--surface)" strokeWidth={1.5} />
+              <Bar isAnimationActive={motionOK} animationDuration={700} name="Principal" dataKey="principal" stackId="a" fill="var(--s-invest)" stroke="var(--surface)" strokeWidth={1.5} />
+              <Bar isAnimationActive={motionOK} animationDuration={700} name="Extra principal" dataKey="extra" stackId="a" fill="var(--s-income)" stroke="var(--surface)" strokeWidth={1.5} radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

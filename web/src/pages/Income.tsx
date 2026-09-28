@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { GradDefs } from '../components/Charts'
 import { del, post, put, type IncomeCheck } from '../api'
-import { money, moneyShort, niceDate, pct } from '../format'
+import { money, moneyShort, motionOK, niceDate, pct } from '../format'
 import { useFetch, useToast } from '../hooks'
 
 const FREQS = [
@@ -190,7 +190,7 @@ export function Income() {
               <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
               <Tooltip cursor={{ fill: 'var(--surface-2)' }} content={({ active, payload }) => active && payload?.length ? (
                 <div className="tt"><div className="tt-head">{niceDate(String(payload[0].payload.date))}</div><b className="num">{money(Number(payload[0].value))}</b></div>) : null} />
-              <Bar isAnimationActive={false} dataKey="amount" fill="url(#g-income)" radius={[7, 7, 2, 2]} maxBarSize={24} />
+              <Bar isAnimationActive={motionOK} animationDuration={700} dataKey="amount" fill="url(#g-income)" radius={[7, 7, 2, 2]} maxBarSize={24} />
             </BarChart>
           </ResponsiveContainer>
         </div>

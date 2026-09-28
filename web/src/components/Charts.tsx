@@ -3,7 +3,7 @@ import {
   Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine,
 } from 'recharts'
 import type { Totals } from '../api'
-import { money, moneyShort, pct, periodLabel } from '../format'
+import { money, moneyShort, motionOK, pct, periodLabel } from '../format'
 
 type Period = Totals & { period: string }
 
@@ -48,12 +48,19 @@ function CashTooltip({ active, payload }: { active?: boolean; payload?: { payloa
       ))}
       <div className="tt-row"><span><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested</span><b className="num">{money(p.invested, { cents: false })}</b></div>
       <div className="tt-row"><span>Savings rate</span><b className="num">{pct(p.savings_rate)}</b></div>
+      <div className="tt-hint">Click a bar to see its transactions</div>
     </div>
   )
 }
 
 /** Income vs spending per period, with what was saved as a line. One $ axis. */
-export function CashflowChart({ periods, height = 300 }: { periods: Period[]; height?: number }) {
+export function CashflowChart({ periods, height = 300, onPick }: {
+  periods: Period[]; height?: number; onPick?: (period: string, flows?: string) => void
+}) {
+  const pick = (flows?: string) => onPick ? (d: unknown) => {
+    const p = (d as { payload?: Period }).payload?.period
+    if (p) onPick(p, flows)
+  } : undefined
   const [table, setTable] = useState(false)
   if (!periods.length) return <div className="empty">No transactions in this range.</div>
   return (
@@ -96,9 +103,11 @@ export function CashflowChart({ periods, height = 300 }: { periods: Period[]; he
             <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
             <ReferenceLine y={0} stroke="var(--line)" />
             <Tooltip content={<CashTooltip />} cursor={{ fill: 'var(--surface-2)' }} />
-            <Bar isAnimationActive={false} dataKey="income" fill="url(#g-income)" radius={[8, 8, 3, 3]} maxBarSize={26} />
-            <Bar isAnimationActive={false} dataKey="spend" fill="url(#g-spend)" radius={[8, 8, 3, 3]} maxBarSize={26} />
-            <Line isAnimationActive={false} dataKey="saved" stroke="var(--s-saved)" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: 'var(--surface)', fill: 'var(--s-saved)' }} activeDot={{ r: 6, strokeWidth: 2, stroke: 'var(--surface)' }} type="monotone" />
+            <Bar isAnimationActive={motionOK} animationDuration={700} dataKey="income" fill="url(#g-income)" radius={[8, 8, 3, 3]} maxBarSize={26}
+                 onClick={pick('income')} style={onPick ? { cursor: 'pointer' } : undefined} />
+            <Bar isAnimationActive={motionOK} animationDuration={700} dataKey="spend" fill="url(#g-spend)" radius={[8, 8, 3, 3]} maxBarSize={26}
+                 onClick={pick('spend,refund')} style={onPick ? { cursor: 'pointer' } : undefined} />
+            <Line isAnimationActive={motionOK} animationDuration={700} dataKey="saved" stroke="var(--s-saved)" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: 'var(--surface)', fill: 'var(--s-saved)' }} activeDot={{ r: 6, strokeWidth: 2, stroke: 'var(--surface)' }} type="monotone" />
           </ComposedChart>
         </ResponsiveContainer>
       )}

@@ -1,9 +1,30 @@
-import { Link } from 'react-router-dom'
-import type { Account, Totals } from '../api'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import type { Account, Totals, Txn } from '../api'
 import { qs } from '../api'
 import { CashflowChart } from '../components/Charts'
-import { ago, money, pct } from '../format'
-import { presetRange, useFetch, useSummary } from '../hooks'
+import { TxnDrawer } from '../components/Txns'
+import { catColor, Num, Sparkline } from '../components/Viz'
+import { ago, money, motionOK, niceDate, pct, periodLabel, periodRange } from '../format'
+import { presetRange, useFetch, useRange, useSummary } from '../hooks'
+
+type NwPoint = { date: string; net_worth: number; estimated: boolean }
+
+function NetWorthTip({ active, payload }: { active?: boolean; payload?: { payload: NwPoint }[] }) {
+  if (!active || !payload?.length) return null
+  const p = payload[0].payload
+  return <div className="tt"><div className="tt-head">{niceDate(p.date)}</div>
+    <div className="tt-row"><span>Net worth</span><b className="num">{money(p.net_worth, { cents: false })}</b></div>
+    {p.estimated && <div className="tt-hint">estimated: investment gains before Sep 28 aren't known</div>}</div>
+}
+
+/** Initials in a colored circle, colored by category so similar spending looks alike. */
+function Avatar({ name, category }: { name: string; category: string }) {
+  const words = name.replace(/[^A-Za-z ]/g, ' ').split(' ').filter(Boolean)
+  const init = ((words[0]?.[0] || '?') + (words[1]?.[0] || '')).toUpperCase()
+  return <span className="avatar" style={{ background: catColor(category) }} aria-hidden>{init}</span>
+}
 
 const GROUPS: { key: Account['type']; title: string; debt?: boolean }[] = [
   { key: 'depository', title: 'Cash' },
@@ -17,7 +38,24 @@ export function Home() {
   const { summary: s } = useSummary()
   const six = presetRange('6m')
   const cf = useFetch<{ periods: (Totals & { period: string })[] }>(`/api/cashflow${qs({ ...six, group: 'month' })}`).data
+  const nw = useFetch<{ points: NwPoint[] }>('/api/networth_history').data
+  const recent = useFetch<{ rows: Txn[] }>('/api/transactions?limit=8')
+  const [open, setOpen] = useState<Txn | null>(null)
+  const { reload } = useSummary()
+  const range = useRange()
+  const nav = useNavigate()
   if (!s) return <div className="empty">Loading…</div>
+  const periods = cf?.periods || []
+  const labels = periods.map((p) => periodLabel(p.period))
+  const spark = (k: 'income' | 'spend' | 'saved' | 'invested', color: string) =>
+    <Sparkline values={periods.map((p) => p[k] || 0)} labels={labels} color={color} />
+  const nwPts = nw?.points || []
+  const nwChange = nwPts.length > 1 ? nwPts[nwPts.length - 1].net_worth - nwPts[0].net_worth : null
+  const drill = (period: string, flows?: string) => {
+    const pr = periodRange(period)
+    range.setAccounts([]); range.setCustom(pr.start, pr.end)
+    nav(`/transactions${qs(flows ? { flows } : {})}`)
+  }
   const m = s.this_month
   const broken = s.items.filter((i) => i.status && i.status !== 'ok')
   return (
@@ -44,23 +82,68 @@ export function Home() {
 
       <div className="tiles">
         <div className="tile hero" style={{ gridColumn: '1 / -1' }}>
+          <div className="hero-grid">
+          <div>
           <div className="label">Net worth</div>
-          <div className={`value ${s.net_worth < 0 ? 'neg' : ''}`}>{money(s.net_worth, { cents: false })}</div>
+          <div className={`value ${s.net_worth < 0 ? 'neg' : ''}`}><Num v={s.net_worth} /></div>
+          {nwChange != null && <div className="hero-delta">{nwChange >= 0 ? '▲' : '▼'} {money(Math.abs(nwChange), { cents: false })} over the past year</div>}
           <div className="hero-foot">
             <div><b>{money(s.accounts.filter((a) => a.type === 'depository').reduce((t, a) => t + (a.balance || 0), 0), { cents: false })}</b>cash</div>
             <div><b>{money(s.accounts.filter((a) => a.type === 'investment').reduce((t, a) => t + (a.balance || 0), 0), { cents: false })}</b>invested</div>
             <div><b>{money(s.debts, { cents: false })}</b>owed</div>
           </div>
+          </div>
+          {nwPts.length > 2 && (
+            <div className="hero-chart">
+              <ResponsiveContainer width="100%" height={150}>
+                <AreaChart data={nwPts} margin={{ top: 6, right: 0, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="nw-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#ffffff" stopOpacity={0.45} />
+                      <stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" hide />
+                  <YAxis hide domain={['dataMin', 'dataMax']} />
+                  <Tooltip content={<NetWorthTip />} cursor={{ stroke: 'rgba(255,255,255,.5)', strokeDasharray: '3 3' }} />
+                  <Area dataKey="net_worth" type="monotone" stroke="#ffffff" strokeWidth={2.5} fill="url(#nw-fill)"
+                        isAnimationActive={motionOK} animationDuration={900} activeDot={{ r: 5, fill: '#fff', stroke: 'var(--accent-deep)', strokeWidth: 2 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          </div>
         </div>
-        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Income this month</div><div className="value">{money(m.income, { cents: false })}</div></div>
-        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spent this month</div><div className="value">{money(m.spend, { cents: false })}</div></div>
-        <div className="tile"><div className="label">Saved this month</div><div className={`value ${m.saved < 0 ? 'neg' : ''}`}>{money(m.saved, { cents: false })}</div><div className="sub">{pct(m.savings_rate)} of income</div></div>
-        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested this month</div><div className="value">{money(m.invested, { cents: false })}</div></div>
+        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Income this month</div><div className="value"><Num v={m.income} /></div>{spark('income', 'var(--s-income)')}</div>
+        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spent this month</div><div className="value"><Num v={m.spend} /></div>{spark('spend', 'var(--s-spend)')}</div>
+        <div className="tile"><div className="label">Saved this month</div><div className={`value ${m.saved < 0 ? 'neg' : ''}`}><Num v={m.saved} /></div>{spark('saved', 'var(--accent)')}<div className="sub">{pct(m.savings_rate)} of income</div></div>
+        <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Invested this month</div><div className="value"><Num v={m.invested} /></div>{spark('invested', 'var(--s-invest)')}</div>
       </div>
 
       <div className="card">
         <div className="group-head"><h2>Last 6 months</h2><Link to="/dashboard" className="small">Full dashboard →</Link></div>
-        {cf ? <CashflowChart periods={cf.periods} height={240} /> : <div className="empty">Loading…</div>}
+        {cf ? <CashflowChart periods={cf.periods} height={240} onPick={drill} /> : <div className="empty">Loading…</div>}
+      </div>
+
+      <div className="card section">
+        <div className="group-head"><h2>Recent activity</h2><Link to="/transactions" className="small">See all</Link></div>
+        {!recent.data ? <div className="empty">Loading…</div> : recent.data.rows.length === 0 ? <div className="empty">No transactions yet. Link an account on the Accounts page.</div> : (
+          <div className="feed">
+            {recent.data.rows.map((t) => {
+              const out = t.amount > 0, muted = t.flow === 'transfer' || t.flow === 'ignore'
+              return (
+                <button key={t.txn_id} className="feed-row" onClick={() => setOpen(t)}>
+                  <Avatar name={t.name} category={t.category} />
+                  <span className="feed-main">
+                    <span className="feed-name">{t.name}</span>
+                    <span className="feed-sub">{niceDate(t.date)} · {t.category}{t.pending ? ' · pending' : ''}</span>
+                  </span>
+                  <span className={`feed-amt ${muted ? 'muted' : out ? 'out' : 'in'}`}>{out ? '−' : '+'}{money(Math.abs(t.amount))}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid two section">
@@ -88,6 +171,7 @@ export function Home() {
           )
         })}
       </div>
+      {open && <TxnDrawer t={open} onClose={() => setOpen(null)} onSaved={() => { recent.reload(); reload() }} />}
     </>
   )
 }

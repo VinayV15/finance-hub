@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { del, post, put, type Goal, type GoalType, type Windfalls, type Windfall } from '../api'
 import { money, niceDate, pct } from '../format'
 import { useFetch, useSummary, useToast } from '../hooks'
+import { Num, Ring } from '../components/Viz'
 
 const TYPES: { v: GoalType; label: string; help: string }[] = [
   { v: 'emergency', label: 'Emergency fund', help: 'Keep a number of months of spending in cash accounts.' },
@@ -33,16 +34,19 @@ function GoalCard({ g, onChanged }: { g: Goal; onChanged: () => void }) {
         {status && <span style={{ color: status.color, fontWeight: 600, fontSize: 13 }}>{status.icon} {status.label}</span>}
       </div>
       <div className="small muted">{TYPES.find((t) => t.v === g.type)?.label}{g.target_date ? ` · by ${niceDate(g.target_date)}` : ''}</div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 10 }}>
-        <span className="num" style={{ fontSize: 24, fontWeight: 650 }}>{money(p.current, { cents: false })}</span>
-        {p.target != null && <span className="muted">of {money(p.target, { cents: false })}</span>}
-        {p.pct != null && <span className="muted small">· {pct(p.pct)}</span>}
-      </div>
-      {p.target != null && (
-        <div style={{ height: 10, background: 'var(--surface-2)', borderRadius: 5, marginTop: 6 }}>
-          <div style={{ width: `${Math.min(1, p.pct || 0) * 100}%`, height: '100%', background: 'var(--s-invest)', borderRadius: 5 }} />
+      <div className="goal-body">
+        {p.target != null && (
+          <Ring value={p.pct || 0} size={92} stroke={9}
+                color={p.on_track === false ? 'var(--warn)' : (p.pct || 0) >= 1 ? 'var(--good)' : 'var(--accent)'}
+                label={`${pct(p.pct)} of ${g.name}`}>
+            <span className="ring-pct big">{pct(p.pct)}</span>
+          </Ring>
+        )}
+        <div>
+          <div className="goal-amt"><Num v={p.current} /></div>
+          {p.target != null && <div className="muted">of {money(p.target, { cents: false })}</div>}
         </div>
-      )}
+      </div>
       <p className="small" style={{ margin: '8px 0 0', color: 'var(--text-2)' }}>
         {p.detail}
         {p.monthly_needed != null && p.monthly_needed > 0 && g.type !== 'mortgage' && <> · <b>{money(p.monthly_needed, { cents: false })}/mo</b> {g.type === 'investing' ? 'still to go this month' : 'needed to finish on time'}</>}

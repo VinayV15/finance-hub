@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { post, put, qs, type BudgetMonth, type BudgetRow } from '../api'
 import { money, periodLabel } from '../format'
 import { useFetch, useRange, useToast } from '../hooks'
+import { Num, Ring } from '../components/Viz'
 
 const shiftMonth = (m: string, n: number) => {
   const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1 + n, 1)
@@ -21,11 +22,16 @@ function Bar({ r, pace, onEdit, onOpen }: { r: BudgetRow; pace: number; onEdit: 
   const [val, setVal] = useState(r.budget != null ? String(r.budget) : '')
   useEffect(() => setVal(r.budget != null ? String(r.budget) : ''), [r.budget])
   const b = r.budget || 0
-  const pct = b ? Math.min(r.spent / b, 1) : 0
   const st = r.status ? STATUS[r.status] : null
-  const fill = r.status === 'over' ? 'var(--bad)' : r.status === 'ahead_of_pace' ? 'var(--warn)' : 'var(--seq)'
+  const fill = r.status === 'over' ? 'var(--bad)' : r.status === 'ahead_of_pace' ? 'var(--warn)' : 'var(--good)'
   return (
-    <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
+    <div className="row" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+      {b > 0 && (
+        <Ring value={r.spent / b} pace={pace < 1 ? pace : null} size={58} stroke={6} color={fill}
+              label={`${Math.round((r.spent / b) * 100)}% of ${r.category} budget used`}>
+          <span className="ring-pct">{Math.round((r.spent / b) * 100)}%</span>
+        </Ring>
+      )}
       <div className="row-main" style={{ minWidth: 180 }}>
         <button className="row-title link-btn" style={{ padding: 0, fontSize: 15, color: 'var(--text)', textAlign: 'left' }} onClick={onOpen} title="See these transactions">{r.category} ›</button>
         <div className="small muted">
@@ -33,13 +39,6 @@ function Bar({ r, pace, onEdit, onOpen }: { r: BudgetRow; pace: number; onEdit: 
             : <>{money(r.spent, { cents: false })} spent · no budget{r.suggested ? ` (suggested ${money(r.suggested, { cents: false })})` : ''}</>}
           {st && <span style={{ color: st.color, marginLeft: 8, fontWeight: 600 }}>{st.icon} {st.label}</span>}
         </div>
-        {b > 0 && (
-          <div style={{ position: 'relative', height: 10, background: 'var(--surface-2)', borderRadius: 5, marginTop: 6 }}
-               title={`${Math.round((r.spent / b) * 100)}% used, ${Math.round(pace * 100)}% of the month gone`}>
-            <div style={{ width: `${pct * 100}%`, height: '100%', background: fill, borderRadius: 5 }} />
-            {pace < 1 && <div style={{ position: 'absolute', left: `${pace * 100}%`, top: -3, bottom: -3, width: 2, background: 'var(--text-2)', borderRadius: 1 }} />}
-          </div>
-        )}
         {r.avg6 != null && <div className="small muted" style={{ marginTop: 4 }}>6-month average {money(r.avg6, { cents: false })}</div>}
       </div>
       <label className="field" style={{ width: 120 }}>Monthly limit
@@ -98,9 +97,17 @@ export function Budget() {
         <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spent so far</div>
           <div className="value">{money(data.budgeted_spent + data.unbudgeted_spent, { cents: false })}</div>
           <div className="sub">{money(data.money_back, { cents: false })} came back (paybacks, refunds) · net {money(data.net_spent, { cents: false })}</div></div>
-        <div className="tile"><div className="label">Left in budgets</div>
-          <div className={`value ${data.total_budget - data.budgeted_spent < 0 ? 'neg' : ''}`}>{money(data.total_budget - data.budgeted_spent, { cents: false })}</div>
+        <div className="tile tile-ring"><div>
+          <div className="label">Left in budgets</div>
+          <div className={`value ${data.total_budget - data.budgeted_spent < 0 ? 'neg' : ''}`}><Num v={data.total_budget - data.budgeted_spent} /></div>
           <div className="sub">{isCurrent ? `${data.days - data.elapsed} days left in the month` : 'month closed'}</div></div>
+          {data.total_budget > 0 && (
+            <Ring value={data.budgeted_spent / data.total_budget} pace={isCurrent ? data.pace : null} size={70}
+                  color={data.budgeted_spent > data.total_budget ? 'var(--bad)' : data.budgeted_spent / data.total_budget > (isCurrent ? data.pace : 1) ? 'var(--warn)' : 'var(--good)'}
+                  label={`${Math.round((data.budgeted_spent / data.total_budget) * 100)}% of all budgets used`}>
+              <span className="ring-pct">{Math.round((data.budgeted_spent / data.total_budget) * 100)}%</span>
+            </Ring>
+          )}</div>
         {data.left_after_budget != null && <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-invest)' }} />Not budgeted = can save</div>
           <div className={`value ${data.left_after_budget < 0 ? 'neg' : 'pos'}`}>{money(data.left_after_budget, { cents: false })}</div>
           <div className="sub">take-home minus all budgets, per month</div></div>}
@@ -116,7 +123,7 @@ export function Budget() {
         </div>
       ) : (
         <div className="card">
-          <div className="group-head"><h2>Your budgets</h2><span className="muted small">the tick shows where even spending would put you today</span></div>
+          <div className="group-head"><h2>Your budgets</h2><span className="muted small">the tick on each ring shows where even spending would put you today</span></div>
           {budgeted.map((r) => <Bar key={r.category} r={r} pace={isCurrent ? data.pace : 1} onEdit={(v) => save(r.category, v)} onOpen={() => open(r.category)} />)}
         </div>
       )}

@@ -49,3 +49,16 @@ export const ago = (s: string | null) => {
 export const FLOW_LABEL: Record<string, string> = {
   spend: 'Spending', income: 'Income', refund: 'Refund', transfer: 'Transfer', growth: 'Growth', ignore: 'Ignored',
 }
+
+/** False when the device asks for reduced motion: no count-ups, no chart draw-in. */
+export const motionOK = typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+/** First and last day of a chart period: '2026-09', '2026-Q3', '2026', or a day/week-start date. */
+export const periodRange = (p: string, group = 'month'): { start: string; end: string } => {
+  const d = (y: number, m: number, day: number) => iso(new Date(y, m, day))
+  if (/^\d{4}$/.test(p)) return { start: `${p}-01-01`, end: `${p}-12-31` }
+  if (/^\d{4}-Q\d$/.test(p)) { const y = +p.slice(0, 4), q = +p.slice(6) - 1; return { start: d(y, q * 3, 1), end: d(y, q * 3 + 3, 0) } }
+  if (/^\d{4}-\d{2}$/.test(p)) { const y = +p.slice(0, 4), m = +p.slice(5, 7) - 1; return { start: d(y, m, 1), end: d(y, m + 1, 0) } }
+  if (group === 'week') { const s = new Date(`${p}T00:00:00`); const e = new Date(s); e.setDate(e.getDate() + 6); return { start: p, end: iso(e) } }
+  return { start: p, end: p }
+}
