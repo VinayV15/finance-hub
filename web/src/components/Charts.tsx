@@ -7,6 +7,27 @@ import { money, moneyShort, pct, periodLabel } from '../format'
 
 type Period = Totals & { period: string }
 
+/** Vertical gradients for bar and area fills: full color at the top, fading toward the baseline.
+ *  Drop inside any recharts chart, then use fill="url(#g-income)" etc. */
+export function GradDefs() {
+  const g = (id: string, color: string, from = 1, to = 0.45) => (
+    <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" style={{ stopColor: color, stopOpacity: from }} />
+      <stop offset="100%" style={{ stopColor: color, stopOpacity: to }} />
+    </linearGradient>
+  )
+  return (
+    <defs>
+      {g('g-income', 'var(--s-income)')}
+      {g('g-spend', 'var(--s-spend)')}
+      {g('g-invest', 'var(--s-invest)')}
+      {g('g-seq', 'var(--seq)')}
+      {g('a-income', 'var(--s-income)', 0.45, 0)}
+      {g('a-invest', 'var(--s-invest)', 0.5, 0)}
+    </defs>
+  )
+}
+
 const SERIES = [
   { key: 'income', label: 'Income', color: 'var(--s-income)', kind: 'bar' },
   { key: 'spend', label: 'Spending', color: 'var(--s-spend)', kind: 'bar' },
@@ -69,14 +90,15 @@ export function CashflowChart({ periods, height = 300 }: { periods: Period[]; he
       ) : (
         <ResponsiveContainer width="100%" height={height}>
           <ComposedChart data={periods} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="22%">
+            <GradDefs />
             <CartesianGrid vertical={false} stroke="var(--grid)" />
             <XAxis dataKey="period" tickFormatter={periodLabel} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={12} />
             <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
             <ReferenceLine y={0} stroke="var(--line)" />
             <Tooltip content={<CashTooltip />} cursor={{ fill: 'var(--surface-2)' }} />
-            <Bar isAnimationActive={false} dataKey="income" fill="var(--s-income)" radius={[4, 4, 0, 0]} maxBarSize={28} />
-            <Bar isAnimationActive={false} dataKey="spend" fill="var(--s-spend)" radius={[4, 4, 0, 0]} maxBarSize={28} />
-            <Line isAnimationActive={false} dataKey="saved" stroke="var(--s-saved)" strokeWidth={2} dot={{ r: 3, strokeWidth: 0, fill: 'var(--s-saved)' }} activeDot={{ r: 5 }} type="monotone" />
+            <Bar isAnimationActive={false} dataKey="income" fill="url(#g-income)" radius={[8, 8, 3, 3]} maxBarSize={26} />
+            <Bar isAnimationActive={false} dataKey="spend" fill="url(#g-spend)" radius={[8, 8, 3, 3]} maxBarSize={26} />
+            <Line isAnimationActive={false} dataKey="saved" stroke="var(--s-saved)" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: 'var(--surface)', fill: 'var(--s-saved)' }} activeDot={{ r: 6, strokeWidth: 2, stroke: 'var(--surface)' }} type="monotone" />
           </ComposedChart>
         </ResponsiveContainer>
       )}

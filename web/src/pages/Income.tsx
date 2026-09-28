@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { GradDefs } from '../components/Charts'
 import { del, post, put, type IncomeCheck } from '../api'
 import { money, moneyShort, niceDate, pct } from '../format'
 import { useFetch, useToast } from '../hooks'
@@ -183,12 +184,13 @@ export function Income() {
           <h2>{e.employer} paychecks</h2>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={e.history.slice(-26)} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <GradDefs />
               <CartesianGrid vertical={false} stroke="var(--grid)" />
               <XAxis dataKey="date" tickFormatter={niceDate} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={16} />
               <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
               <Tooltip cursor={{ fill: 'var(--surface-2)' }} content={({ active, payload }) => active && payload?.length ? (
                 <div className="tt"><div className="tt-head">{niceDate(String(payload[0].payload.date))}</div><b className="num">{money(Number(payload[0].value))}</b></div>) : null} />
-              <Bar isAnimationActive={false} dataKey="amount" fill="var(--s-income)" radius={[4, 4, 0, 0]} maxBarSize={24} />
+              <Bar isAnimationActive={false} dataKey="amount" fill="url(#g-income)" radius={[7, 7, 2, 2]} maxBarSize={24} />
             </BarChart>
           </ResponsiveContainer>
         </div>

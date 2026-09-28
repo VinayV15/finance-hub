@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { money, moneyShort, niceDate, periodLabel } from '../format'
-import { HBarList } from './Charts'
+import { GradDefs, HBarList } from './Charts'
 
 export interface TxnChartData {
   measure: 'spend' | 'income'
@@ -103,8 +103,8 @@ export function CategoryOverTime({ data }: { data: TxnChartData }) {
             <ReferenceLine y={0} stroke="var(--line)" />
             <Tooltip content={<OverTimeTip series={series} />} cursor={{ fill: 'var(--surface-2)' }} />
             {series.map((s, i) => (
-              <Bar key={s.key} isAnimationActive={false} dataKey={s.key} stackId="a" fill={s.color} stroke="var(--surface)" strokeWidth={1}
-                   maxBarSize={36} radius={i === series.length - 1 ? [4, 4, 0, 0] : 0} />
+              <Bar key={s.key} isAnimationActive={false} dataKey={s.key} stackId="a" fill={s.color} stroke="var(--surface)" strokeWidth={1.5}
+                   maxBarSize={36} radius={i === series.length - 1 ? [6, 6, 0, 0] : 0} />
             ))}
           </BarChart>
         </ResponsiveContainer>
@@ -193,7 +193,8 @@ export function DailyPattern({ data, start, end }: { data: TxnChartData; start?:
             <Tooltip cursor={{ fill: 'var(--surface-2)' }} content={({ active, payload }) => active && payload?.length ? (
               <div className="tt"><div className="tt-head">{(payload[0].payload as { day: string }).day}</div>
                 <div className="tt-row"><span>Average</span><b className="num">{money(payload[0].value as number)}</b></div></div>) : null} />
-            <Bar isAnimationActive={false} dataKey="avg" fill="var(--seq)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+            <GradDefs />
+            <Bar isAnimationActive={false} dataKey="avg" fill="url(#g-seq)" radius={[8, 8, 3, 3]} maxBarSize={32} />
           </BarChart>
         </ResponsiveContainer>
       </div>

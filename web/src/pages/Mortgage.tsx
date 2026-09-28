@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { GradDefs } from '../components/Charts'
 import { del, post, put, qs, type Mortgage as M, type MortgageRow } from '../api'
 import { money, moneyShort, niceDate, pct } from '../format'
 import { useFetch, useToast } from '../hooks'
@@ -114,29 +115,31 @@ export function Mortgage() {
         <div className="card">
           <h2>Balance over time</h2>
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={balanceSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <ComposedChart data={balanceSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <GradDefs />
               <CartesianGrid vertical={false} stroke="var(--grid)" />
               <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={20} />
               <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
               <Tooltip content={<TT />} />
               <Legend wrapperStyle={{ fontSize: 12.5, color: 'var(--text-2)' }} iconType="plainline" />
-              <Line isAnimationActive={false} name="Your loan" dataKey="yours" stroke="var(--s-income)" strokeWidth={2} dot={false} />
+              <Area isAnimationActive={false} name="Your loan" dataKey="yours" stroke="var(--s-invest)" strokeWidth={2.5} fill="url(#a-invest)" dot={false} type="monotone" />
               <Line isAnimationActive={false} name="Lender's schedule" dataKey="lender" stroke="var(--muted)" strokeWidth={2} strokeDasharray="5 4" dot={false} />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="card">
           <h2>Where each year's payments go</h2>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={data.years} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <GradDefs />
               <CartesianGrid vertical={false} stroke="var(--grid)" />
               <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={20} />
               <YAxis tickFormatter={moneyShort} tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
               <Tooltip content={<TT />} cursor={{ fill: 'var(--surface-2)' }} />
               <Legend wrapperStyle={{ fontSize: 12.5, color: 'var(--text-2)' }} />
-              <Bar isAnimationActive={false} name="Interest" dataKey="interest" stackId="a" fill="var(--s-spend)" />
-              <Bar isAnimationActive={false} name="Principal" dataKey="principal" stackId="a" fill="var(--s-invest)" />
-              <Bar isAnimationActive={false} name="Extra principal" dataKey="extra" stackId="a" fill="var(--s-income)" radius={[4, 4, 0, 0]} />
+              <Bar isAnimationActive={false} name="Interest" dataKey="interest" stackId="a" fill="var(--s-spend)" stroke="var(--surface)" strokeWidth={1.5} />
+              <Bar isAnimationActive={false} name="Principal" dataKey="principal" stackId="a" fill="var(--s-invest)" stroke="var(--surface)" strokeWidth={1.5} />
+              <Bar isAnimationActive={false} name="Extra principal" dataKey="extra" stackId="a" fill="var(--s-income)" stroke="var(--surface)" strokeWidth={1.5} radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

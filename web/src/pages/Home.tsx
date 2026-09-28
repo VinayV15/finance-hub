@@ -46,7 +46,11 @@ export function Home() {
         <div className="tile hero" style={{ gridColumn: '1 / -1' }}>
           <div className="label">Net worth</div>
           <div className={`value ${s.net_worth < 0 ? 'neg' : ''}`}>{money(s.net_worth, { cents: false })}</div>
-          <div className="sub">{money(s.assets, { cents: false })} assets − {money(s.debts, { cents: false })} owed</div>
+          <div className="hero-foot">
+            <div><b>{money(s.accounts.filter((a) => a.type === 'depository').reduce((t, a) => t + (a.balance || 0), 0), { cents: false })}</b>cash</div>
+            <div><b>{money(s.accounts.filter((a) => a.type === 'investment').reduce((t, a) => t + (a.balance || 0), 0), { cents: false })}</b>invested</div>
+            <div><b>{money(s.debts, { cents: false })}</b>owed</div>
+          </div>
         </div>
         <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-income)' }} />Income this month</div><div className="value">{money(m.income, { cents: false })}</div></div>
         <div className="tile"><div className="label"><i className="swatch" style={{ background: 'var(--s-spend)' }} />Spent this month</div><div className="value">{money(m.spend, { cents: false })}</div></div>

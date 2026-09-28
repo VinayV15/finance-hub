@@ -44,7 +44,7 @@ function AccountPicker() {
     <div ref={ref} style={{ position: 'relative' }}>
       <button className="btn small" onClick={() => setOpen(!open)} aria-expanded={open}>{label} ▾</button>
       {open && (
-        <div className="card" style={{ position: 'absolute', zIndex: 30, top: 38, left: 0, width: 280, padding: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)' }}>
+        <div className="popover">
           <button className="link-btn" onClick={() => r.setAccounts([])}>All accounts</button>
           {accts.map((a) => (
             <label key={a.account_id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 2px', fontSize: 14 }}>
