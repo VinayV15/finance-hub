@@ -70,6 +70,7 @@ export interface Summary {
   net_worth: number
   assets: number
   debts: number
+  home: { home_value: number; mortgage: number; equity: number; mortgage_linked: boolean } | null
   this_month: Totals
   review_count: number
   accounts: Account[]

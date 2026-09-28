@@ -53,6 +53,7 @@ export function Dashboard() {
     { label: 'Cash', rows: accts.filter((a) => a.type === 'depository').map(acctRow) },
     { label: 'Investments', rows: [...accts.filter((a) => a.type === 'investment').map(acctRow),
       ...(est ? [{ key: '401k', name: '401(k)', sub: 'estimated from paychecks', value: est.value, note: 'est.' }] : [])] },
+    ...(summary?.home ? [{ label: 'Home', rows: [{ key: 'home', name: 'Home value', sub: 'from the Mortgage page', value: summary.home.home_value }] }] : []),
     { label: 'Credit cards', owed: true, rows: accts.filter((a) => a.type === 'credit').map(acctRow) },
     { label: 'Loans', owed: true, rows: [...accts.filter((a) => a.type === 'loan').map(acctRow),
       ...(mort?.config && !accts.some((a) => a.type === 'loan' && a.subtype === 'mortgage')

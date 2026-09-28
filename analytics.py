@@ -97,6 +97,33 @@ def cashflow(start=None, end=None, group="month", accounts=None):
     return {"periods": periods, "total": total}
 
 
+# ---------- your home ----------
+
+def home_position():
+    """Home value and what's left on the mortgage (Mortgage page settings), so net worth includes them.
+    If a linked loan account already is the mortgage, its balance is counted there instead."""
+    import mortgage
+    try:
+        m = mortgage.summary()
+    except Exception:
+        return None
+    if not m:
+        return None
+    with db.conn() as c:
+        linked = c.execute("SELECT 1 FROM accounts WHERE type='loan' AND lower(COALESCE(subtype,''))='mortgage'").fetchone()
+    cfg = m["config"]
+    return {"home_value": m["home_value"], "mortgage": 0 if linked else m["balance"], "mortgage_linked": bool(linked),
+            "equity": m["equity"], "closing_date": cfg.get("closing_date"), "original_amount": cfg["original_amount"],
+            "schedule": [(r["date"], r["balance"]) for r in m["actual"] if not r["projected"]]}
+
+
+def _mortgage_on(home, day):
+    if not home or not home["closing_date"] or day < home["closing_date"]:
+        return None
+    past = [b for d, b in home["schedule"] if d <= day]
+    return past[-1] if past else home["original_amount"]
+
+
 # ---------- net worth over time ----------
 
 def networth_history(weeks=52):
@@ -117,6 +144,7 @@ def networth_history(weeks=52):
         for r in c.execute("SELECT account_id, date, balance FROM balance_snapshots ORDER BY date"):
             snaps[r["account_id"]].append((r["date"], r["balance"]))
     first_snap = min((v[0][0] for v in snaps.values() if v), default=None)
+    home = home_position()
     out = []
     for d in days:
         cash = invested = debts = 0.0
@@ -130,8 +158,13 @@ def networth_history(weeks=52):
                 invested += s[-1] if s else a["balance"] + moved_after
                 continue
             cash += a["balance"] + moved_after
+        owed = _mortgage_on(home, d)
+        equity = 0.0
+        if owed is not None:  # home value is today's estimate throughout; the mortgage follows its schedule
+            equity = home["home_value"] - (owed if not home["mortgage_linked"] else 0)
         out.append({"date": d, "cash": round(cash, 2), "invested": round(invested, 2), "debts": round(debts, 2),
-                    "net_worth": round(cash + invested - debts, 2), "estimated": not first_snap or d < first_snap})
+                    "home_equity": round(equity, 2),
+                    "net_worth": round(cash + invested - debts + equity, 2), "estimated": not first_snap or d < first_snap})
     return {"points": out, "exact_from": first_snap}
 
 

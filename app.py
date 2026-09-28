@@ -131,8 +131,13 @@ def summary():
     this_month = analytics.cashflow(start=month_start)["total"]
     assets = sum(a["balance"] or 0 for a in accounts if a["type"] in ASSET_TYPES)
     debts = sum(a["balance"] or 0 for a in accounts if a["type"] in DEBT_TYPES)
+    home = analytics.home_position()
+    if home:  # the house is an asset and the mortgage a debt, even though neither is a linked account
+        assets += home["home_value"]
+        debts += home["mortgage"]
+        home = {k: home[k] for k in ("home_value", "mortgage", "equity", "mortgage_linked")}
     return jsonify(
-        net_worth=assets - debts, assets=assets, debts=debts, this_month=this_month, review_count=review,
+        net_worth=assets - debts, assets=assets, debts=debts, home=home, this_month=this_month, review_count=review,
         accounts=accounts, holdings=holdings, items=items,
         last_sync=db.get_meta("last_sync"), env=plaid_sync.ENV, history_start=analytics.history_start(),
     )

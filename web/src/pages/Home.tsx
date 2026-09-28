@@ -108,7 +108,8 @@ export function Home() {
           <div className="hero-foot">
             <div><b>{money(s.accounts.filter((a) => a.type === 'depository').reduce((t, a) => t + (a.balance || 0), 0), { cents: false })}</b>cash</div>
             <div><b>{money(s.accounts.filter((a) => a.type === 'investment').reduce((t, a) => t + (a.balance || 0), 0), { cents: false })}</b>invested</div>
-            <div><b>{money(s.debts, { cents: false })}</b>owed</div>
+            {s.home && <div><b>{money(s.home.home_value - s.home.mortgage, { cents: false })}</b>home equity</div>}
+            <div><b>{money(s.debts - (s.home?.mortgage || 0), { cents: false })}</b>{s.home ? 'other debts' : 'owed'}</div>
           </div>
           </div>
           {nwPts.length > 2 && (
@@ -167,6 +168,14 @@ export function Home() {
       <div className="grid two section">
         {GROUPS.map((g) => {
           const rows = s.accounts.filter((a) => (a.type || 'other') === g.key)
+          if (g.key === 'other' && s.home) return (
+            <div className="card" key="home">
+              <div className="group-head"><h2>Home</h2><span className="num">{money(s.home.home_value - s.home.mortgage, { cents: false })} equity</span></div>
+              <div className="row"><div className="row-main"><div className="row-title">Home value</div><div className="muted small">from the Mortgage page · update it there</div></div><div className="row-amt">{money(s.home.home_value)}</div></div>
+              {!s.home.mortgage_linked && <div className="row"><div className="row-main"><div className="row-title">Mortgage left</div><div className="muted small">follows your payments</div></div><div className="row-amt">−{money(s.home.mortgage)}</div></div>}
+              {rows.map((a) => <div className="row" key={a.account_id}><div className="row-main"><div className="row-title">{a.name}</div><div className="muted small">{a.institution}</div></div><div className="row-amt">{money(a.balance)}</div></div>)}
+            </div>
+          )
           if (!rows.length) return null
           return (
             <div className="card" key={g.key}>
