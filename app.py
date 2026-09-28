@@ -713,6 +713,15 @@ def api_tax_limits():
     return jsonify(ok=True)
 
 
+@app.route("/api/home_value")
+@login_required
+def api_home_value():
+    import home
+    if request.args.get("refresh"):
+        home.index(refresh=True)
+    return jsonify(home.estimate(mortgage.get_config()))
+
+
 @app.route("/api/projection")
 @login_required
 def api_projection():

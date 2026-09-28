@@ -14,6 +14,7 @@ import re
 from datetime import date, timedelta
 
 import db
+import home
 
 DUE_WINDOW = 25  # days before a due date that a payment counts toward it
 
@@ -211,7 +212,8 @@ def summary(planned_extra_monthly=0.0):
     total_interest_orig = round(sum(r["interest"] for r in orig), 2)
     total_interest_now = round(sum(r["interest"] for r in rows), 2)
     extra_total = round(sum(a["extra"] for a in alloc), 2)
-    home_value = cfg.get("current_value") or cfg.get("appraised_value") or value
+    est = home.estimate(cfg)  # your number if entered, else purchase price moved with the area index
+    home_value = est["value"] if est else (cfg.get("current_value") or cfg.get("appraised_value") or value)
     # Yearly principal vs interest (history + projection) for the chart.
     years = {}
     for r in rows:

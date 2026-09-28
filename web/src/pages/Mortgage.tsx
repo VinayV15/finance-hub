@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { GradDefs } from '../components/Charts'
+import { HomeValueCard } from '../components/HomeValue'
 import { del, post, put, qs, type Mortgage as M, type MortgageRow } from '../api'
 import { money, moneyShort, motionOK, niceDate, pct } from '../format'
 import { useFetch, useToast } from '../hooks'
@@ -94,6 +95,8 @@ export function Mortgage() {
         <div className="tile"><div className="label">PMI ({money(data.pmi.monthly)}/mo) can come off</div><div className="value">{monthYear(data.pmi.request_date_projected)}</div>
           <div className="sub">ask at {money(data.pmi.request_at_balance, { cents: false })} balance · drops on its own at {money(data.pmi.auto_at_balance, { cents: false })} ({monthYear(data.pmi.auto_date_projected)})</div></div>
       </div>
+
+      <HomeValueCard />
 
       <div className="card">
         <div className="group-head">
@@ -211,7 +214,7 @@ export function Mortgage() {
           <div className="form-grid">
             <label className="field">Escrow / month<input className="input" inputMode="decimal" value={edit.escrow_monthly} onChange={(e) => setEdit({ ...edit, escrow_monthly: e.target.value })} /></label>
             <label className="field">PMI / month<input className="input" inputMode="decimal" value={edit.pmi_monthly} onChange={(e) => setEdit({ ...edit, pmi_monthly: e.target.value })} /></label>
-            <label className="field">Home value (optional)<input className="input" inputMode="decimal" value={edit.current_value} onChange={(e) => setEdit({ ...edit, current_value: e.target.value })} placeholder={String(c.appraised_value || '')} /></label>
+            <label className="field">Your own home value (blank = area index)<input className="input" inputMode="decimal" value={edit.current_value} onChange={(e) => setEdit({ ...edit, current_value: e.target.value })} placeholder={`index: ${Math.round(data.home_value)}`} /></label>
             <button className="btn" onClick={saveEdit}>Save</button>
           </div>
           <p className="muted small">Escrow changes after the yearly escrow review — update it when Servicer sends the new amount.</p>
