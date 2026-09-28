@@ -13,6 +13,7 @@ import { Mortgage } from './pages/Mortgage'
 import { Forecast } from './pages/Forecast'
 import { Recurring } from './pages/Recurring'
 import { Taxes } from './pages/Taxes'
+import { Projection } from './pages/Projection'
 import { Transactions } from './pages/Transactions'
 
 const NAV = [
@@ -24,6 +25,7 @@ const NAV = [
   { to: '/goals', label: 'Goals', icon: 'goals' },
   { to: '/recurring', label: 'Bills', icon: 'recurring' },
   { to: '/forecast', label: 'Forecast', icon: 'forecast' },
+  { to: '/projection', label: 'Projection', icon: 'projection' },
   { to: '/income', label: 'Income', icon: 'income', section: 'Details' },
   { to: '/taxes', label: 'Taxes', icon: 'taxes' },
   { to: '/mortgage', label: 'Mortgage', icon: 'mortgage' },
@@ -128,6 +130,7 @@ function Shell() {
           <Route path="/recurring" element={<Recurring />} />
           <Route path="/forecast" element={<Forecast />} />
           <Route path="/taxes" element={<Taxes />} />
+          <Route path="/projection" element={<Projection />} />
           <Route path="/mortgage" element={<Mortgage />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="*" element={<Home />} />

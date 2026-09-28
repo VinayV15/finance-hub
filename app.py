@@ -713,6 +713,12 @@ def api_tax_limits():
     return jsonify(ok=True)
 
 
+@app.route("/api/projection")
+@login_required
+def api_projection():
+    return jsonify(insights.projection_inputs())
+
+
 @app.route("/api/alerts")
 @login_required
 def api_alerts():

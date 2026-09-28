@@ -12,6 +12,8 @@ const P: Record<string, string> = {
   recurring: 'M4 12a8 8 0 0 1 13.7-5.6L20 8.7M20 4v4.7h-4.7M20 12a8 8 0 0 1-13.7 5.6L4 15.3M4 20v-4.7h4.7',
   forecast: 'M3 17l5-5 4 3 8-8M15 7h5v5',
   taxes: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',
+  projection: 'M3 20h18M5 16l4-5 3 3 6-8M15 6h3v3',
+  recap: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',

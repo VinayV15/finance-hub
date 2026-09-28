@@ -429,3 +429,40 @@ def alerts():
     gone = _alert_dismissed()
     order = {"bad": 0, "warn": 1, "info": 2}
     return sorted([a for a in out if a["id"] not in gone], key=lambda a: order[a["level"]])
+
+
+# ---------- long-term projection (the math runs in the browser; this supplies today's numbers) ----------
+
+def projection_inputs():
+    months = planning._last_full_months(6)
+    start, _ = planning._month_bounds(months[0])
+    _, end = planning._month_bounds(months[-1])
+    six = analytics.cashflow(start, end)["total"]
+    y12 = planning._last_full_months(12)
+    s12, _ = planning._month_bounds(y12[0])
+    _, e12 = planning._month_bounds(y12[-1])
+    year = analytics.cashflow(s12, e12)["total"]
+    with db.conn() as c:
+        cash = c.execute("SELECT COALESCE(SUM(balance),0) FROM accounts WHERE type='depository'").fetchone()[0]
+        invested = c.execute("SELECT COALESCE(SUM(balance),0) FROM accounts WHERE type='investment'").fetchone()[0]
+        other_debt = c.execute("SELECT COALESCE(SUM(balance),0) FROM accounts WHERE type IN ('credit','loan')").fetchone()[0]
+    inv = analytics.investments()
+    k401_now = (inv.get("retirement_estimate") or {}).get("value", 0)
+    b = analytics.pay_breakdown()
+    home = analytics.home_position()
+    sched = []
+    if home:
+        import mortgage
+        m = mortgage.summary()
+        sched = [{"year": int(y["year"]), "balance": y["end_balance"]} for y in m["years"]]
+    return {
+        "cash": round(cash, 2), "invested": round(invested + k401_now, 2), "k401_now": round(k401_now, 2),
+        "other_debt": round(other_debt, 2),
+        "monthly_saved": round(six["saved"] / 6, 2), "monthly_invested": round(six["invested"] / 6, 2),
+        "k401_per_year": round(b["per_year"]["retirement"] + b["per_year"]["employer_match"], 2) if b else 0,
+        "annual_spending": round(year["spend"], 2),
+        "home_value": home["home_value"] if home else 0,
+        "mortgage": home["mortgage"] if home else 0,
+        "mortgage_by_year": sched,
+        "months_used": months,
+    }
