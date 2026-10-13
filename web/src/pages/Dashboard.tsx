@@ -35,6 +35,7 @@ export function Dashboard() {
   const firstByInst = new Map<string, string>()
   for (const c of coverage) {
     if (!c.first || !c.n || (r.accounts.length && !r.accounts.includes(c.account_id))) continue
+    if (c.opened) continue // a new account has no older history to miss
     const prev = firstByInst.get(c.institution)
     if (!prev || c.first < prev) firstByInst.set(c.institution, c.first)
   }
@@ -42,10 +43,12 @@ export function Dashboard() {
   const months = cf?.periods.length || 1
 
   const it = inv?.total
-  const KIND_LABEL = { roth: 'Roth IRA', '401k': '401(k)', ira: 'IRA', brokerage: 'Brokerage' }
+  const KIND_LABEL = { roth: 'Roth IRA', '401k': '401(k)', roth401k: 'Roth 401(k)', ira: 'IRA', hsa: 'HSA', brokerage: 'Brokerage' }
   const gainPct = it?.cost_basis ? it.gain_all_time / it.cost_basis : null
   const est = inv?.retirement_estimate
-  const putInLinked = (it?.put_in || 0) - (est?.put_in || 0)
+  // From your own cash (matches the Invested drill-down) vs. payroll 401(k) deposits (yours + match, never in your bank)
+  const putInCash = it?.put_in_cash ?? ((it?.put_in || 0) - (est?.put_in || 0))
+  const putInPayroll = it?.put_in_payroll ?? (est?.put_in || 0)
 
   // Balances right now, grouped. Credit cards and the mortgage are money owed.
   const accts = summary?.accounts || []
@@ -113,7 +116,7 @@ export function Dashboard() {
           {nw && <Sparkline values={nw.points.map((p) => p.invested)} labels={nw.points.map((p) => niceDate(p.date))} color="var(--s-invest)" />}<div className="sub">
           {inv?.accounts.map((a) => <span key={a.account_id}>{KIND_LABEL[a.kind]} {money(a.value, { cents: false })} · </span>)}
           {est && <span>401(k) ~{money(est.value, { cents: false })} (est. from paychecks, no gains) · </span>}
-          put in this range: {money(putInLinked, { cents: false })}{est?.put_in ? <> + ~{money(est.put_in, { cents: false })} 401(k)</> : null}
+          put in this range: {money(putInCash, { cents: false })} from your cash{putInPayroll ? <> + {est ? '~' : ''}{money(putInPayroll, { cents: false })} into your 401(k) from paychecks{est ? ' (est.)' : ''}</> : null}
         </div></div>
         <div className="tile"><div className="label">Investment earnings</div>
           {it?.gain_range != null ? <>

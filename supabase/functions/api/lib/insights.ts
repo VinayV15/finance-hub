@@ -151,7 +151,7 @@ export async function recurringSummary() {
     count: live.length,
     next_7_days: round(sum(live.filter((r) => r.next_date <= soon).map((r) => r.typical)), 2),
     price_increases: live.filter((r) => r.price_change && r.price_change > 0),
-    dismissed: allItems.filter((r) => r.dismissed),
+    dismissed: allItems.filter((r) => r.dismissed),  // one pass over the data, not two
   }
 }
 
@@ -243,29 +243,40 @@ export async function taxYear(yearArg?: string | number | null) {
   const saved = (((await getJson<any>('tax_limits', {})) || {})[String(year)]) || {}
   const limits = { ...(LIMITS[year] ?? LIMITS[Math.max(...Object.keys(LIMITS).map(Number))]), ...saved }
   const q = async (sqlText: string, ...a: unknown[]) => (await scalar(sqlText, a)) || 0
-  const roth = await q(`SELECT SUM(-t.amount) ${analytics.FROM} WHERE lower(COALESCE(a.subtype,'')) LIKE '%roth%'
+  const roth = await q(`SELECT SUM(-t.amount) ${analytics.FROM} WHERE ${analytics.isRothIra()}
       AND k.kind='invest_contribution' AND t.amount < 0 AND t.date BETWEEN ? AND ?`, start, end)
-  const early = await q(`SELECT SUM(-t.amount) ${analytics.FROM} WHERE lower(COALESCE(a.subtype,'')) LIKE '%roth%'
+  const early = await q(`SELECT SUM(-t.amount) ${analytics.FROM} WHERE ${analytics.isRothIra()}
       AND k.kind='invest_contribution' AND t.amount < 0 AND t.date BETWEEN ? AND ?`, `${year}-01-01`, `${year}-04-15`)
-  const divTaxable = await q(`SELECT SUM(-t.amount) ${analytics.FROM} WHERE k.kind='dividend' AND t.date BETWEEN ? AND ?
-      AND lower(COALESCE(a.subtype,'')) NOT LIKE '%roth%' AND lower(COALESCE(a.subtype,'')) NOT LIKE '%ira%'
-      AND lower(COALESCE(a.subtype,'')) NOT LIKE '%401%'`, start, end)
-  const divSheltered = await q(`SELECT SUM(-t.amount) ${analytics.FROM} WHERE k.kind='dividend' AND t.date BETWEEN ? AND ?
-      AND (lower(COALESCE(a.subtype,'')) LIKE '%roth%' OR lower(COALESCE(a.subtype,'')) LIKE '%ira%'
-      OR lower(COALESCE(a.subtype,'')) LIKE '%401%')`, start, end)
+  const divTaxable = await q(`SELECT SUM(-t.amount) ${analytics.FROM} WHERE k.flow='growth' AND k.kind LIKE '%dividend%' AND t.date BETWEEN ? AND ?
+      AND a.type='investment' AND NOT ${analytics.isSheltered()}`, start, end)
+  const divSheltered = await q(`SELECT SUM(-t.amount) ${analytics.FROM} WHERE k.flow='growth' AND k.kind LIKE '%dividend%' AND t.date BETWEEN ? AND ?
+      AND ${analytics.isSheltered()}`, start, end)
   const interest = await all(`SELECT a.institution, a.name, ROUND(SUM(-t.amount),2) AS amount
       ${analytics.FROM} WHERE k.kind='interest' AND t.date BETWEEN ? AND ? GROUP BY a.account_id ORDER BY a.account_id`, [start, end])
   const refunds = await all(`SELECT t.date, t.name, -t.amount AS amount ${analytics.FROM} WHERE k.kind='tax_refund' ORDER BY t.date DESC`)
   const history = await analytics.payHistory()
   let mine = 0.0, match = 0.0
   const dates = await analytics.paycheckDates(start, end)
+  // Paydays the linked plan covers use its real deposits; earlier ones use the pay-settings estimate.
+  const cutoff = await analytics.planDataSince()
   for (const d of dates) {
+    if (cutoff && d >= cutoff) continue
     const h = analytics.settingsOn(d, history)
     const b = h ? await analytics.payBreakdown(h) : null
     if (b) { mine += b.per_paycheck.retirement; match += b.per_paycheck.employer_match }
   }
   const cfg = (await getJson<any>('income', {})) || {}
   const b = await analytics.payBreakdown(cfg)
+  if (cutoff) {
+    const deps = await all(`SELECT t.name, -t.amount AS amount ${analytics.FROM} WHERE a.type='investment' AND ${analytics.isWorkplace()}
+        AND k.kind='invest_contribution' AND t.amount < 0 AND t.date BETWEEN ? AND ?`, [start, end])
+    const total = sum(deps.map((x) => x.amount))
+    const employer = deps.filter((x) => analytics.EMPLOYER_RE.test(x.name || ''))
+    // Plan shows employer money separately: use it. Otherwise split by your % vs. the match % from pay settings.
+    const matchPart = employer.length ? sum(employer.map((x) => x.amount))
+      : b && b.per_paycheck.retirement + b.per_paycheck.employer_match ? total * b.per_paycheck.employer_match / (b.per_paycheck.retirement + b.per_paycheck.employer_match) : 0
+    mine += total - matchPart; match += matchPart
+  }
   let leftChecks = 0
   if (b && year === parts(t0).y) leftChecks = round(diffDays(`${year}-12-31`, t0) / (365 / b.periods_per_year))
   const projected401k = mine + leftChecks * (b ? b.per_paycheck.retirement : 0)
@@ -275,7 +286,7 @@ export async function taxYear(yearArg?: string | number | null) {
     roth: { contributed: round(roth, 2), limit: limits.ira, left: round(Math.max(limits.ira - roth, 0), 2), jan_to_apr15: round(early, 2),
       monthly_to_max: monthsLeft ? round(Math.max(limits.ira - roth, 0) / monthsLeft, 2) : null },
     k401: { yours: round(mine, 2), match: round(match, 2), limit: limits.k401, projected_year_end: round(projected401k, 2),
-      estimated: !(await analytics.hasLinked401k()), left: round(Math.max(limits.k401 - mine, 0), 2) },
+      estimated: !cutoff || dates.some((d) => d < cutoff), left: round(Math.max(limits.k401 - mine, 0), 2) },
     dividends: { taxable: round(divTaxable, 2), sheltered: round(divSheltered, 2) },
     interest, interest_total: round(sum(interest.map((i) => i.amount)), 2),
     refunds,
@@ -344,6 +355,17 @@ export async function alerts() {
   const due = rs.items.filter((r) => r.active && r.next_date <= addDays(t0, 3))
   if (due.length) out.push({ id: `due|${t0}`, level: 'info', icon: 'recurring', title: `${due.length} bill${due.length > 1 ? 's' : ''} due in the next 3 days`,
     detail: due.slice(0, 4).map((r) => `${r.name} $${commas(r.typical)}`).join(', '), link: { to: '/recurring' } })
+  // Credit cards: statement due soon (pay in full, no interest) and high utilization (hurts your credit score).
+  const cards = await all(`SELECT a.account_id, a.name, a.balance, a.credit_limit, l.next_due, l.last_statement FROM accounts a
+      LEFT JOIN liabilities l ON l.account_id=a.account_id WHERE a.type='credit'`)
+  for (const c of cards) {
+    if (c.next_due && c.next_due >= t0 && c.next_due <= addDays(t0, 5) && (c.last_statement || 0) > 0)
+      out.push({ id: `card-due|${c.account_id}|${c.next_due}`, level: 'warn', icon: 'cards', title: `${c.name} payment due ${c.next_due.slice(5).replace('-', '/')}`,
+        detail: `Pay the $${commas(c.last_statement)} statement in full to avoid interest.`, link: { to: '/cards' } })
+    if (c.credit_limit && (c.balance || 0) / c.credit_limit > 0.3)
+      out.push({ id: `card-util|${c.account_id}|${month}`, level: 'warn', icon: 'cards', title: `${c.name} is ${Math.round((c.balance / c.credit_limit) * 100)}% of its limit`,
+        detail: 'Over 30% when the statement closes can lower your credit score. Paying part of it before the statement date helps.', link: { to: '/cards' } })
+  }
   const n = await scalar('SELECT COUNT(*) FROM txn_class WHERE review=1')
   if (n) out.push({ id: `review|${t0}|${n}`, level: 'info', icon: 'review', title: `${n} transaction${n > 1 ? 's' : ''} to check`,
     detail: "The app wasn't sure how to count these.", link: { to: '/review' } })
@@ -462,17 +484,20 @@ export async function planInputs() {
   const interest = await scalar(`SELECT COALESCE(SUM(-t.amount),0) ${analytics.FROM} WHERE k.kind='interest'
       AND a.type='depository' AND t.date BETWEEN ? AND ?`, [s12, e12])
   const brokerageIn = await scalar(`SELECT COALESCE(SUM(${analytics.INVESTED}),0) ${analytics.FROM}
-      WHERE t.date BETWEEN ? AND ? AND a.type='investment' AND lower(COALESCE(a.subtype,'')) NOT LIKE '%roth%'
-      AND lower(COALESCE(a.subtype,'')) NOT LIKE '%ira%' AND lower(COALESCE(a.subtype,'')) NOT LIKE '%401%'`, [s6, e6])
+      WHERE t.date BETWEEN ? AND ? AND a.type='investment' AND NOT ${analytics.isSheltered()}`, [s6, e6])
   const sub = (a: any) => (a.subtype || '').toLowerCase()
   const cash = sum(accts.filter((a) => a.type === 'depository').map((a) => a.balance))
   const cards = sum(accts.filter((a) => a.type === 'credit').map((a) => a.balance))
-  const roth = accts.filter((a) => a.type === 'investment' && sub(a).includes('roth'))
-  const k401 = accts.filter((a) => a.type === 'investment' && (sub(a).includes('401') || (sub(a).includes('ira') && !sub(a).includes('roth'))))
-  const brokerage = accts.filter((a) => a.type === 'investment' && !roth.includes(a) && !k401.includes(a))
+  // Buckets by how the money can be used: Roth IRA (your deposits usable anytime), Roth 401(k) (tax-free, locked
+  // until 59½), pre-tax 401(k)/IRA (taxed when withdrawn), and everything else (brokerage, HSA).
+  const kind = (a: any) => (a.type === 'investment' ? analytics.accountKind(a.subtype) : null)
+  const roth = accts.filter((a) => kind(a) === 'roth')
+  const roth401 = accts.filter((a) => kind(a) === 'roth401k')
+  const k401 = accts.filter((a) => kind(a) === '401k' || kind(a) === 'ira')
+  const brokerage = accts.filter((a) => a.type === 'investment' && !roth.includes(a) && !k401.includes(a) && !roth401.includes(a))
   let k401Bal = sum(k401.map((a) => a.balance))
   let k401Est: number | null = null
-  if (!k401.length) { k401Est = (await analytics.investments()).retirement_estimate?.value ?? 0; k401Bal = k401Est }
+  if (!k401.length && !roth401.length) { k401Est = (await analytics.investments()).retirement_estimate?.value ?? 0; k401Bal = k401Est }
   const avgCash = cash || 1
   const cashApy = interest ? round(interest / avgCash * 100, 2) : 0.0
   const b = await analytics.payBreakdown()
@@ -493,6 +518,7 @@ export async function planInputs() {
       roth: round(sum(roth.map((a) => a.balance)), 2),
       roth_basis: round(sum(roth.map((a) => basis[a.account_id] || a.balance)), 2),
       k401: round(k401Bal, 2), k401_estimated: k401Est != null,
+      roth401k: round(sum(roth401.map((a) => a.balance)), 2),
     },
     cash_apy: cashApy,
     avg: {
@@ -502,6 +528,10 @@ export async function planInputs() {
     },
     roth_this_year: taxRows.roth.contributed, roth_limit: taxRows.roth.limit,
     k401_yearly: b ? round(b.per_year.retirement + b.per_year.employer_match, 2) : 0,
+    // your part vs. the match: with a Roth 401(k) your part grows tax-free; the match is still pre-tax
+    k401_employee_yearly: b ? round(b.per_year.retirement, 2) : 0,
+    k401_match_yearly: b ? round(b.per_year.employer_match, 2) : 0,
+    k401_is_roth: roth401.length > 0 && !accts.some((a) => kind(a) === '401k'),
     k401_limit: taxRows.k401.limit,
     mortgage: m ? { balance: m.balance, pi_monthly: m.note_pi, escrow_monthly: m.config.escrow_monthly || 0, payoff: m.payoff_projected,
       by_year: m.years.map((y: any) => ({ year: Number(y.year), balance: y.end_balance })) } : null,

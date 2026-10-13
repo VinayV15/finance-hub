@@ -1,6 +1,7 @@
 // Retirement & goals planner. Runs year by year in today's dollars (returns minus inflation).
-// Four buckets with their own rules: cash (interest), brokerage (taxed gains, usable anytime),
-// Roth IRA (your deposits usable anytime, growth after 59½), 401(k) (after 59½, taxed on the way out).
+// Buckets with their own rules: cash (interest), brokerage (taxed gains, usable anytime),
+// Roth IRA (your deposits usable anytime, growth after 59½), pre-tax 401(k)/IRA (after 59½, taxed on the way out),
+// Roth 401(k) (after 59½, tax-free).
 
 export interface PlanSettings {
   birth_year: number | null; retire_age: number; plan_to_age: number
@@ -12,10 +13,11 @@ export interface PlanSettings {
 export interface PlanGoal { id: string; type: string; name: string; target: number | null; target_date: string | null; current: number | null; monthly_needed: number | null }
 export interface PlanInputs {
   today: string
-  buckets: { cash: number; cash_gross: number; cards: number; brokerage: number; brokerage_basis: number; roth: number; roth_basis: number; k401: number; k401_estimated: boolean }
+  buckets: { cash: number; cash_gross: number; cards: number; brokerage: number; brokerage_basis: number; roth: number; roth_basis: number; k401: number; k401_estimated: boolean; roth401k?: number }
   cash_apy: number
   avg: { take_home_month: number | null; income_month: number; spend_month: number; saved_month: number; invested_month: number; brokerage_month: number; spend_year: number }
   roth_this_year: number; roth_limit: number; k401_yearly: number; k401_limit: number
+  k401_employee_yearly?: number; k401_match_yearly?: number; k401_is_roth?: boolean
   mortgage: { balance: number; pi_monthly: number; escrow_monthly: number; payoff: string; by_year: { year: number; balance: number }[] } | null
   home: { value: number; source: string; stats: { expected_real: number; low_real: number; high_real: number } | null } | null
   goals: PlanGoal[]
@@ -41,7 +43,7 @@ export type Plan = ReturnType<typeof resolved>
 
 export interface YearRow {
   year: number; age: number; retired: boolean
-  cash: number; brokerage: number; roth: number; k401: number; liquid: number; home: number
+  cash: number; brokerage: number; roth: number; k401: number; roth401k: number; liquid: number; home: number
   need: number; ss: number; withdrawn: Record<string, number>; shortfall: number; purchases: string[]
 }
 
@@ -70,7 +72,10 @@ export function simulate(inp: PlanInputs, p: Plan, opt: { retireAge?: number; ex
   const retireAge = opt.retireAge ?? p.retire_age
   const rs = (p.stock_return + (opt.returnShift ?? 0) - p.inflation) / 100
   const rc = ((p.cash_apy ?? 0) - p.inflation) / 100
-  const b = { ...inp.buckets }
+  const b = { ...inp.buckets, roth401k: inp.buckets.roth401k ?? 0 }
+  // With a Roth 401(k), your part of each year's 401(k) money goes in after tax; the employer match is pre-tax.
+  const emp = inp.k401_employee_yearly ?? 0, mat = inp.k401_match_yearly ?? 0
+  const rothShare = inp.k401_is_roth && emp + mat > 0 ? emp / (emp + mat) : 0
   let rothBasis = b.roth_basis
   const owed = new Map((inp.mortgage?.by_year || []).map((m) => [m.year, m.balance]))
   const purchases = inp.goals.filter((g) => g.type === 'custom' && g.target && g.target_date && g.target_date.slice(0, 4) >= String(y0))
@@ -91,9 +96,10 @@ export function simulate(inp: PlanInputs, p: Plan, opt: { retireAge?: number; ex
       b.cash = b.cash * (1 + rc) + cashIn * (1 + rc / 2)
       b.brokerage = b.brokerage * (1 + rs) + brokIn * (1 + rs / 2)
       b.roth = b.roth * (1 + rs) + p.roth_yearly * (1 + rs / 2); rothBasis += p.roth_yearly
-      b.k401 = b.k401 * (1 + rs) + p.k401_yearly * grow * (1 + rs / 2)
+      b.k401 = b.k401 * (1 + rs) + p.k401_yearly * (1 - rothShare) * grow * (1 + rs / 2)
+      b.roth401k = b.roth401k * (1 + rs) + p.k401_yearly * rothShare * grow * (1 + rs / 2)
     } else {
-      b.cash *= 1 + rc; b.brokerage *= 1 + rs; b.roth *= 1 + rs; b.k401 *= 1 + rs
+      b.cash *= 1 + rc; b.brokerage *= 1 + rs; b.roth *= 1 + rs; b.k401 *= 1 + rs; b.roth401k *= 1 + rs
     }
     // Big purchases from your Goals, paid in their target year: cash first, then brokerage.
     for (const g of purchases.filter((g) => +g.target_date!.slice(0, 4) === year)) {
@@ -108,11 +114,11 @@ export function simulate(inp: PlanInputs, p: Plan, opt: { retireAge?: number; ex
     if (retired && !atRetire) {
       needAtRetire = spend
       accessibleAtRetire = b.cash + b.brokerage + Math.min(rothBasis, b.roth)
-      lockedAtRetire = b.k401 + Math.max(b.roth - rothBasis, 0)
+      lockedAtRetire = b.k401 + b.roth401k + Math.max(b.roth - rothBasis, 0)
     }
     if (need > 0) {
       const floor = (p.cash_floor_months / 12) * spend
-      const take = (key: 'cash' | 'brokerage' | 'roth' | 'k401', limit: number, tax = 0) => {
+      const take = (key: 'cash' | 'brokerage' | 'roth' | 'k401' | 'roth401k', limit: number, tax = 0) => {
         if (need <= 0) return
         const grossNeed = need / (1 - tax)
         const g = Math.max(Math.min(grossNeed, limit), 0)
@@ -122,7 +128,7 @@ export function simulate(inp: PlanInputs, p: Plan, opt: { retireAge?: number; ex
       }
       take('cash', b.cash - floor)
       take('brokerage', b.brokerage, p.tax_brokerage / 100)
-      if (age >= EARLY) { take('k401', b.k401, p.tax_401k / 100); take('roth', b.roth) }
+      if (age >= EARLY) { take('k401', b.k401, p.tax_401k / 100); take('roth401k', b.roth401k); take('roth', b.roth) }
       else take('roth', Math.min(rothBasis, b.roth))
       take('cash', b.cash) // dip into the cushion last
       if (need > 1) shortfall += need
@@ -130,8 +136,8 @@ export function simulate(inp: PlanInputs, p: Plan, opt: { retireAge?: number; ex
     if (shortfall > 1 && runsOutAge == null) runsOutAge = age
     const homeEq = inp.home ? inp.home.value * Math.pow(1 + (p.home_growth ?? 0) / 100, k) - (k === 0 ? (inp.mortgage?.balance ?? 0) : (owed.get(year) ?? 0)) : 0
     const row: YearRow = {
-      year, age, retired, cash: b.cash, brokerage: b.brokerage, roth: b.roth, k401: b.k401,
-      liquid: b.cash + b.brokerage + b.roth + b.k401, home: homeEq, need: retired ? spend : 0, ss: retired ? ss : 0,
+      year, age, retired, cash: b.cash, brokerage: b.brokerage, roth: b.roth, k401: b.k401, roth401k: b.roth401k,
+      liquid: b.cash + b.brokerage + b.roth + b.k401 + b.roth401k, home: homeEq, need: retired ? spend : 0, ss: retired ? ss : 0,
       withdrawn, shortfall, purchases: bought,
     }
     if (retired && !atRetire) atRetire = row

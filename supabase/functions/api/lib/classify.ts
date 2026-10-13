@@ -31,6 +31,7 @@ const P2P_RE = /\bzelle\b|money transfer authorized .* apple|apple cash|cash app
 const MORTGAGE_RE = /mortgage|home loan|loancare|mr\\.? cooper/i // plus your servicer, from the Mortgage page settings
 const VERIFY_RE = /acctverify|acct verify|verification|verify|micro[- ]?deposit|trial deposit|ach test/i
 const ATM_OUT_RE = /atm withdrawal|non-wf atm withdrawal/i
+const WORKPLACE = /401|403|457|thrift|profit sharing|pension|keogh/i
 
 type T = Record<string, any>
 type C = { flow: string; kind: string; category: string; pair_id: string | null; review: number; reason: string; locked: boolean }
@@ -42,11 +43,20 @@ function ownPatterns(institutions: Set<string>) {
   return pats
 }
 
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const wordCache = new Map<string, RegExp>()
+/** Whole-word match, so 'chase' doesn't match 'PURCHASE' and 'ally bank' doesn't match 'TOTALLY BANKED'. */
+const hasWord = (text: string, w: string) => {
+  let re = wordCache.get(w)
+  if (!re) { re = new RegExp(`(^|[^a-z0-9])${esc(w)}($|[^a-z0-9])`); wordCache.set(w, re) }
+  return re.test(text)
+}
+
 function mentionsOwn(t: T, own: Record<string, string[]>) {
   const text = `${t.name || ''} ${t.counterparty || ''}`.toLowerCase()
   for (const [inst, words] of Object.entries(own)) {
     if (inst === t.acct_inst) continue
-    if (words.some((w) => text.includes(w))) return inst
+    if (words.some((w) => hasWord(text, w))) return inst
   }
   return null
 }
@@ -134,6 +144,7 @@ function pairTransfers(txns: T[], cls: Map<string, C>) {
     const c = cls.get(t.txn_id)!
     if (c.locked && c.flow !== 'transfer') continue
     if (c.flow === 'ignore' || ['p2p', 'cash', 'paycheck', 'mortgage'].includes(c.kind)) continue
+    if (t.acct_type === 'investment' && WORKPLACE.test(t.acct_subtype || '')) continue // payroll 401(k) deposits come from your employer, not another account
     if ((t.amount && transferLike(t)) || c.flow === 'transfer') {
       const k = round(Math.abs(t.amount), 2)
       if (!byAmt.has(k)) byAmt.set(k, [])
@@ -224,7 +235,7 @@ function checkPaySchedule(txns: T[], cls: Map<string, C>) {
 }
 
 export async function run_() {
-  const txns = await all(`SELECT t.*, a.type AS acct_type, a.institution AS acct_inst
+  const txns = await all(`SELECT t.*, a.type AS acct_type, a.institution AS acct_inst, a.subtype AS acct_subtype
       FROM transactions t LEFT JOIN accounts a ON a.account_id = t.account_id ORDER BY t.seq`)
   const overrides = new Map((await all('SELECT * FROM txn_overrides')).map((r) => [r.txn_id, r]))
   const rules = await all('SELECT * FROM rules ORDER BY id DESC')

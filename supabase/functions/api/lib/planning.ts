@@ -173,7 +173,8 @@ async function requiredExtraForDate(targetDate: string, pmi = false) {
   return round(Math.ceil(hi / 10) * 10, 2)
 }
 
-const rothIds = (accts: any[]) => accts.filter((a) => a.type === 'investment' && (a.subtype || '').toLowerCase().includes('roth')).map((a) => a.account_id)
+// Roth IRA accounts only (a Roth 401(k) has its own, much higher limit)
+const rothIds = (accts: any[]) => accts.filter((a) => a.type === 'investment' && analytics.accountKind(a.subtype) === 'roth').map((a) => a.account_id)
 
 async function goalProgress(g: any, rothCurrent: number) {
   const t = g.type, cfg = g.config, t0 = today()

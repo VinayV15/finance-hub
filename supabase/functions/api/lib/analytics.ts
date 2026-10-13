@@ -1,6 +1,6 @@
 // Numbers for the dashboards (port of analytics.py). Everything reads classified transactions (classify.ts),
 // so transfers between your own accounts never show up as spending or income.
-import { all, getJson, getMeta, one, scalar } from './db.ts'
+import { all, getJson, getMeta, one, scalar, setJson } from './db.ts'
 import { addDays, diffDays, median, parts, round, sum, today } from './util.ts'
 import * as mortgage from './mortgage.ts'
 
@@ -26,17 +26,42 @@ export async function where(start?: string | null, end?: string | null, accounts
   return [sqlParts.join(' AND '), args]
 }
 
+// ---------- what kind of investment account (by Plaid subtype) ----------
+// Workplace plans are checked first, so a Roth 401(k) counts as a 401(k), never as a Roth IRA.
+const WORKPLACE_RE = '(401|403|457|thrift|profit sharing|pension|keogh)'
+export const isWorkplace = (col = 'a.subtype') => `(lower(COALESCE(${col},'')) ~ '${WORKPLACE_RE}')`
+export const isRothIra = (col = 'a.subtype') => `(lower(COALESCE(${col},'')) LIKE '%roth%' AND NOT ${isWorkplace(col)})`
+/** Tax-sheltered: retirement plans, IRAs, HSAs (their dividends aren't taxed now). */
+export const isSheltered = (col = 'a.subtype') => `(${isWorkplace(col)} OR lower(COALESCE(${col},'')) ~ '(ira|roth|hsa)')`
+
+export type AccountKind = 'roth401k' | '401k' | 'roth' | 'ira' | 'hsa' | 'brokerage'
+export function accountKind(subtype: string | null): AccountKind {
+  const s = (subtype || '').toLowerCase()
+  if (new RegExp(WORKPLACE_RE).test(s)) return s.includes('roth') ? 'roth401k' : '401k'
+  if (s.includes('roth')) return 'roth'
+  if (s.includes('ira')) return 'ira'
+  if (s.includes('hsa')) return 'hsa'
+  return 'brokerage'
+}
+
 // Money into an investment account = invested. Counted once, on the investment account's side, and moves
 // between two of your investment accounts (e.g. brokerage -> Roth) don't count as new investing. Bank-side rows
 // only count when no investment account received them (an investment account that isn't linked).
 const INV_EXTERNAL = "COALESCE(ap.type, '') != 'investment'"
-export const INVESTED = `CASE
+/** Everything you put into investment accounts, including payroll 401(k) deposits (per-account views). */
+export const INVESTED_ALL = `CASE
     WHEN k.kind='invest_contribution' AND a.type='investment' AND t.amount<0 AND ${INV_EXTERNAL} THEN -t.amount
     WHEN k.kind='invest_withdrawal' AND a.type='investment' AND t.amount>0 AND ${INV_EXTERNAL} THEN -t.amount
     WHEN k.kind='invest_contribution' AND a.type!='investment' AND t.amount>0 AND k.pair_id IS NULL
          AND NOT EXISTS (SELECT 1 FROM accounts x WHERE x.type='investment') THEN t.amount
     ELSE 0 END`
-const INVESTED_ROTH = `CASE WHEN lower(COALESCE(a.subtype,'')) LIKE '%roth%' AND k.kind='invest_contribution'
+/** Invested out of your take-home pay. Payroll 401(k) deposits never pass through your bank, so they're counted
+ *  separately (RETIREMENT_PAYROLL) — otherwise the money-flow and saved numbers would count them as cash you spent. */
+export const INVESTED = `CASE WHEN a.type='investment' AND ${isWorkplace()} THEN 0 ELSE (${INVESTED_ALL}) END`
+/** Deposits into a workplace plan (your contributions + employer match), from the plan's own transactions. */
+export const RETIREMENT_PAYROLL = `CASE WHEN a.type='investment' AND ${isWorkplace()} AND k.kind='invest_contribution'
+    AND t.amount<0 THEN -t.amount ELSE 0 END`
+const INVESTED_ROTH = `CASE WHEN ${isRothIra()} AND k.kind='invest_contribution'
     AND t.amount<0 THEN -t.amount ELSE 0 END`
 
 export const SELECT_TOTALS = `
@@ -45,7 +70,8 @@ export const SELECT_TOTALS = `
     ROUND(SUM(CASE WHEN k.flow='refund' THEN -t.amount ELSE 0 END), 2) AS refunds,
     ROUND(SUM(${INVESTED}), 2) AS invested,
     ROUND(SUM(${INVESTED_ROTH}), 2) AS invested_roth,
-    ROUND(SUM(CASE WHEN lower(COALESCE(a.subtype,'')) LIKE '%roth%' THEN 0 ELSE ${INVESTED} END), 2) AS invested_other,
+    ROUND(SUM(CASE WHEN ${isRothIra()} THEN 0 ELSE ${INVESTED} END), 2) AS invested_other,
+    ROUND(SUM(${RETIREMENT_PAYROLL}), 2) AS retirement_payroll,
     ROUND(SUM(COALESCE(m.extra, 0)), 2) AS extra_principal,
     ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS growth,
     ROUND(SUM(CASE WHEN k.kind IN ('paycheck','paycheck_bonus') THEN -t.amount ELSE 0 END), 2) AS paychecks`
@@ -70,11 +96,14 @@ export async function cashflow(start?: string | null, end?: string | null, group
   const rows = await all(`SELECT ${PERIODS[group]} AS period, ${SELECT_TOTALS} ${FROM} WHERE ${w} GROUP BY period ORDER BY period`, args)
   const totalRow = await one(`SELECT ${SELECT_TOTALS} ${FROM} WHERE ${w}`, args)
   const periods = rows.map(finish)
-  // 401(k) never hits a bank account, so it's estimated from paychecks (only when viewing all accounts).
-  const ret = !accounts?.length ? await retirementByPeriod(start, end, group) : {}
-  for (const p of periods) p.retirement = ret[p.period] ?? 0
+  // 401(k) money never hits a bank account: the linked plan's deposits, plus a paycheck estimate for paydays before
+  // the plan's data starts (only when viewing all accounts).
+  const est = !accounts?.length ? await retirementByPeriod(start, end, group) : {}
+  for (const p of periods) p.retirement = round((rows.find((r) => r.period === p.period)?.retirement_payroll || 0) + (est[p.period] || 0), 2)
   const total = finish(totalRow || {})
-  total.retirement = round(sum(Object.values(ret)), 2)
+  const estTotal = sum(Object.values(est))
+  total.retirement = round((totalRow?.retirement_payroll || 0) + estTotal, 2)
+  total.retirement_estimated = estTotal > 0
   total.months = await scalar(`SELECT COUNT(DISTINCT substr(t.date,1,7)) ${FROM} WHERE ${w}`, args)
   return { periods, total }
 }
@@ -160,7 +189,8 @@ export async function investments(start?: string | null, end?: string | null, ac
     FROM accounts a WHERE a.type='investment' ORDER BY a.balance DESC`)
   if (accounts?.length) accts = accts.filter((a) => accounts.includes(a.account_id))
   const flows = new Map((await all(`SELECT t.account_id,
-      ROUND(SUM(${INVESTED}), 2) AS put_in,
+      ROUND(SUM(${INVESTED_ALL}), 2) AS put_in,
+      ROUND(SUM(${RETIREMENT_PAYROLL}), 2) AS put_in_payroll,
       ROUND(SUM(CASE WHEN k.flow='growth' THEN -t.amount ELSE 0 END), 2) AS dividends,
       ROUND(SUM(CASE WHEN k.kind='invest_fee' THEN t.amount ELSE 0 END), 2) AS fees
     ${FROM} WHERE ${w} GROUP BY t.account_id ORDER BY 1`, args)).map((r) => [r.account_id, r]))
@@ -168,10 +198,10 @@ export async function investments(start?: string | null, end?: string | null, ac
   for (const a of accts) {
     const f: any = flows.get(a.account_id) || {}
     a.put_in = f.put_in || 0
+    a.put_in_payroll = f.put_in_payroll || 0
     a.dividends = f.dividends || 0
     a.fees = f.fees || 0
-    const sub = (a.subtype || '')
-    a.kind = sub.toLowerCase().includes('roth') ? 'roth' : sub.includes('401') ? '401k' : sub.toLowerCase().includes('ira') ? 'ira' : 'brokerage'
+    a.kind = accountKind(a.subtype)
     a.gain_all_time = a.cost_basis ? round(a.value - a.cost_basis, 2) : null
     a.gain_all_time_pct = a.cost_basis ? round(a.gain_all_time / a.cost_basis, 4) : null
     a.gain_range = null
@@ -186,12 +216,14 @@ export async function investments(start?: string | null, end?: string | null, ac
       }
     }
   }
-  // 401(k) isn't linked yet: estimate from paychecks (all accounts view only), contributions with no market gains.
+  // Paydays the linked plan doesn't cover (or every payday, before a plan is linked): estimate from paychecks, all
+  // accounts view only. Once linked, the plan's balance already holds that money, so only the deposits are estimated.
   let est: { value: number; put_in: number } | null = null
-  if (!accounts?.length && !(await hasLinked401k())) {
-    const allTime = sum(Object.values(await retirementByPeriod(null, null, 'year')))
+  if (!accounts?.length) {
+    const linked = await hasLinked401k()
+    const allTime = linked ? 0 : sum(Object.values(await retirementByPeriod(null, null, 'year')))
     const inRange = sum(Object.values(await retirementByPeriod(start, end, 'year')))
-    if (allTime) est = { value: round(allTime, 2), put_in: round(inRange, 2) }
+    if (allTime || inRange) est = { value: round(allTime, 2), put_in: round(inRange, 2) }
   }
   const haveRange = accts.length > 0 && accts.every((a) => a.gain_range != null)
   const tot = (k: string) => round(sum(accts.map((a) => a[k] || 0)), 2)
@@ -201,6 +233,9 @@ export async function investments(start?: string | null, end?: string | null, ac
     total: {
       value: round(tot('value') + (est ? est.value : 0), 2),
       put_in: round(tot('put_in') + (est ? est.put_in : 0), 2),
+      // of which: payroll deposits into a workplace plan (yours + match), and what came from your own cash
+      put_in_payroll: round(tot('put_in_payroll') + (est ? est.put_in : 0), 2),
+      put_in_cash: round(tot('put_in') - tot('put_in_payroll'), 2),
       dividends: tot('dividends'), fees: tot('fees'),
       gain_all_time: tot('gain_all_time'),
       cost_basis: tot('cost_basis'),
@@ -237,10 +272,31 @@ export async function topMerchants(start?: string | null, end?: string | null, a
       ${FROM} WHERE ${w} GROUP BY lower(t.name) HAVING SUM(${SPEND_AMT}) > 0 ORDER BY 2 DESC LIMIT ?`, [...args, limit])
 }
 
+/** First/last transaction date per account, so the UI can warn when a range has gaps. An account that's simply
+ *  newer than the range isn't a gap: `opened` is set when you marked it, or when Plaid (which returns up to two
+ *  years) had nothing older than this account's first transaction. */
 export async function dataCoverage() {
-  return await all(`SELECT a.account_id, a.institution, a.name, MIN(t.date) AS first, MAX(t.date) AS last,
-      COUNT(t.txn_id) AS n FROM accounts a LEFT JOIN transactions t ON t.account_id=a.account_id
-      GROUP BY a.account_id ORDER BY first NULLS FIRST`)
+  const rows = await all(`SELECT a.account_id, a.institution, a.name, a.source, MIN(t.date) AS first, MAX(t.date) AS last,
+      COUNT(t.txn_id) AS n, i.linked_at FROM accounts a LEFT JOIN transactions t ON t.account_id=a.account_id
+      LEFT JOIN items i ON i.item_id = a.item_id
+      GROUP BY a.account_id, i.linked_at ORDER BY first NULLS FIRST`) // true first date, so hidden history isn't a "gap"
+  const marked: Record<string, string> = (await getJson('account_opened', {})) || {}
+  const t0 = today()
+  for (const r of rows) {
+    const seen = (r.linked_at || '').slice(0, 10) || t0
+    const plaidWindowStart = addDays(seen, -700) // Plaid asks for 730 days; leave a margin
+    const looksNew = r.source === 'plaid' && r.first && r.first > plaidWindowStart
+    r.opened = marked[r.account_id] || (looksNew ? r.first : null)
+    r.opened_marked = !!marked[r.account_id]
+    delete r.linked_at
+  }
+  return rows
+}
+
+export async function markOpened(accountId: string, opened: string | null) {
+  const marked: Record<string, string> = (await getJson('account_opened', {})) || {}
+  if (opened) marked[accountId] = opened; else delete marked[accountId]
+  await setJson('account_opened', marked)
 }
 
 // ---------- income ----------
@@ -351,14 +407,30 @@ export async function paycheckDates(start?: string | null, end?: string | null) 
 }
 
 export async function hasLinked401k() {
-  return !!(await one("SELECT 1 FROM accounts WHERE type='investment' AND lower(COALESCE(subtype,'')) LIKE '%401%'"))
+  return !!(await one(`SELECT 1 FROM accounts a WHERE a.type='investment' AND ${isWorkplace()}`))
 }
 
+/** How a workplace plan names the employer's deposits (match, safe harbor, profit sharing). */
+export const EMPLOYER_RE = /employer|match|company|\ber\b|safe ?harbor|profit/i
+
+/** First date the linked workplace plan has deposits for (null = no plan linked). A plan linked mid-way only has
+ * recent history, so paydays before this still use the paycheck estimate. Deposits land up to ~8 days after payday. */
+export async function planDataSince(): Promise<string | null> {
+  if (!(await hasLinked401k())) return null
+  const first = await scalar(`SELECT MIN(t.date) FROM transactions t JOIN accounts a USING(account_id)
+      WHERE a.type='investment' AND ${isWorkplace()}`)
+  return addDays(first || today(), -8)
+}
+
+/** Estimated 401(k) money (yours + match) per period, from paychecks and pay settings, for paydays the linked plan
+ * doesn't cover. */
 export async function retirementByPeriod(start?: string | null, end?: string | null, group = 'month'): Promise<Record<string, number>> {
   const history = await payHistory()
-  if (!history.length || await hasLinked401k()) return {}
+  if (!history.length) return {}
+  const cutoff = await planDataSince()
   const [w, args] = await where(start, end, null, "k.kind IN ('paycheck','paycheck_bonus')")
-  const rows = await all(`SELECT DISTINCT ${PERIODS[group]} AS period, t.date ${FROM} WHERE ${w} ORDER BY 1, 2`, args)
+  const rows = (await all(`SELECT DISTINCT ${PERIODS[group]} AS period, t.date ${FROM} WHERE ${w} ORDER BY 1, 2`, args))
+    .filter((r) => !cutoff || r.date < cutoff)
   const out: Record<string, number> = {}
   for (const r of rows) {
     const h = settingsOn(r.date, history)

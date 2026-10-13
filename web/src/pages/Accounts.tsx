@@ -1,7 +1,7 @@
 import { cloud, supabase } from '../cloud'
 import { useEffect, useState } from 'react'
-import { api, del, post, type Rule } from '../api'
-import { FLOW_LABEL, ago, money } from '../format'
+import { api, del, post, put, type Coverage, type Rule } from '../api'
+import { FLOW_LABEL, ago, money, niceDate } from '../format'
 import { useFetch, useSummary, useToast } from '../hooks'
 
 declare global {
@@ -22,6 +22,39 @@ function loadPlaid(): Promise<void> {
     s.onload = () => res(); s.onerror = () => rej(new Error("Couldn't load Plaid. Check your internet connection."))
     document.head.appendChild(s)
   })
+}
+
+/** How far back each account's history goes. A new account's short history is expected, not a gap. */
+function HistoryCard() {
+  const { data, reload } = useFetch<Coverage[]>('/api/coverage')
+  const toast = useToast()
+  const [edit, setEdit] = useState<{ id: string; date: string } | null>(null)
+  if (!data?.length) return null
+  const save = async (id: string, opened: string | null) => {
+    try { await put(`/api/accounts/${encodeURIComponent(id)}/opened`, { opened }); setEdit(null); reload() } catch (e) { toast((e as Error).message, true) }
+  }
+  return (
+    <div className="card">
+      <h2>How far back each account goes</h2>
+      <p className="muted small" style={{ marginTop: -4 }}>Banks share up to 2 years. If an account is newer than that, mark when you opened it so the app doesn't treat its short history as missing data.</p>
+      {data.map((c) => (
+        <div className="row" key={c.account_id}>
+          <div className="row-main">
+            <div className="row-title">{c.institution} {c.name}</div>
+            <div className="muted small">{c.first ? `${c.n.toLocaleString()} transactions since ${niceDate(c.first)}` : 'No transactions yet'}
+              {c.opened ? ` · opened ${niceDate(c.opened)}${c.opened_marked ? '' : ' (detected)'}` : ''}</div>
+          </div>
+          {edit?.id === c.account_id ? (
+            <>
+              <input className="input" type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} style={{ width: 150 }} />
+              <button className="btn small" onClick={() => save(c.account_id, edit.date || null)}>Save</button>
+              {c.opened_marked && <button className="link-btn" onClick={() => save(c.account_id, null)}>Clear</button>}
+            </>
+          ) : <button className="link-btn" onClick={() => setEdit({ id: c.account_id, date: c.opened || c.first || '' })}>{c.opened_marked ? 'Change' : 'Opened recently?'}</button>}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function Accounts() {
@@ -127,6 +160,8 @@ export function Accounts() {
           <button className="btn primary" onClick={() => link('loan')}>+ Mortgage or loan</button>
         </div>
       </div>
+
+      <HistoryCard />
 
       <div className="grid two section">
         <div className="card">

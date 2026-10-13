@@ -34,12 +34,12 @@ function AgeTip({ active, payload }: { active?: boolean; payload?: readonly { pa
   const w = Object.entries(r.withdrawn).filter(([, v]) => v > 1)
   return (
     <div className="tt"><div className="tt-head">Age {r.age} · {r.year}{r.retired ? ' · retired' : ''}</div>
-      {([['k401', '401(k)', 'var(--s-invest)'], ['roth', 'Roth IRA', 'var(--c4)'], ['brokerage', 'Brokerage', 'var(--s-gold)'], ['cash', 'Cash', 'var(--s-income)']] as const).map(([k, l, c]) => (
+      {([['k401', 'Pre-tax 401(k)/IRA', 'var(--s-invest)'], ['roth401k', 'Roth 401(k)', 'var(--c7)'], ['roth', 'Roth IRA', 'var(--c4)'], ['brokerage', 'Brokerage', 'var(--s-gold)'], ['cash', 'Cash', 'var(--s-income)']] as const).filter(([k]) => k !== 'roth401k' || r.roth401k > 1 || r.k401 < 1).map(([k, l, c]) => (
         <div className="tt-row" key={k}><span><i className="swatch" style={{ background: c }} />{l}</span><b className="num">{usd(r[k])}</b></div>
       ))}
       {r.retired && <div className="tt-row"><span>Living costs this year</span><b className="num">{usd(r.need)}</b></div>}
       {r.ss > 0 && <div className="tt-row"><span>Social Security</span><b className="num pos">+{usd(r.ss)}</b></div>}
-      {w.length > 0 && <div className="tt-hint">paid from {w.map(([k, v]) => `${k === 'k401' ? '401(k)' : k} ${moneyShort(v)}`).join(', ')}</div>}
+      {w.length > 0 && <div className="tt-hint">paid from {w.map(([k, v]) => `${({ k401: '401(k)', roth401k: 'Roth 401(k)', roth: 'Roth IRA' } as Record<string, string>)[k] ?? k} ${moneyShort(v)}`).join(', ')}</div>}
       {r.purchases.length > 0 && <div className="tt-hint">buys: {r.purchases.join(', ')}</div>}
       {r.shortfall > 1 && <div className="tt-hint neg">short {usd(r.shortfall)}</div>}
     </div>
@@ -137,7 +137,7 @@ export function Projection() {
             <div className="card">
               <div className="group-head"><h2>Your accounts by age</h2>
                 <div className="legend" style={{ margin: 0 }}>
-                  <span><i className="swatch" style={{ background: 'var(--s-invest)' }} />401(k)</span><span><i className="swatch" style={{ background: 'var(--c4)' }} />Roth IRA</span>
+                  <span><i className="swatch" style={{ background: 'var(--s-invest)' }} />{data.buckets.roth401k ? 'Pre-tax 401(k)' : '401(k)'}</span>{!!data.buckets.roth401k && <span><i className="swatch" style={{ background: 'var(--c7)' }} />Roth 401(k)</span>}<span><i className="swatch" style={{ background: 'var(--c4)' }} />Roth IRA</span>
                   <span><i className="swatch" style={{ background: 'var(--s-gold)' }} />Brokerage</span><span><i className="swatch" style={{ background: 'var(--s-income)' }} />Cash</span>
                 </div></div>
               <div className="line-key">
@@ -147,7 +147,7 @@ export function Projection() {
               </div>
               <ResponsiveContainer width="100%" height={330}>
                 <ComposedChart data={chart} margin={{ top: 14, right: 8, bottom: 0, left: 0 }}>
-                  <defs>{[['pl-401', 'var(--s-invest)'], ['pl-roth', 'var(--c4)'], ['pl-brok', 'var(--s-gold)'], ['pl-cash', 'var(--s-income)']].map(([id, c]) => (
+                  <defs>{[['pl-401', 'var(--s-invest)'], ['pl-r401', 'var(--c7)'], ['pl-roth', 'var(--c4)'], ['pl-brok', 'var(--s-gold)'], ['pl-cash', 'var(--s-income)']].map(([id, c]) => (
                     <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" style={{ stopColor: c, stopOpacity: 0.9 }} /><stop offset="100%" style={{ stopColor: c, stopOpacity: 0.4 }} /></linearGradient>))}</defs>
                   <CartesianGrid vertical={false} stroke="var(--grid)" />
                   <XAxis dataKey="age" tick={{ fill: 'var(--axis)', fontSize: 12.5 }} axisLine={false} tickLine={false} minTickGap={16} />
@@ -159,6 +159,7 @@ export function Projection() {
                   <Area dataKey="cashPos" stackId="a" stroke="var(--s-income)" fill="url(#pl-cash)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
                   <Area dataKey="brokerage" stackId="a" stroke="var(--s-gold)" fill="url(#pl-brok)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
                   <Area dataKey="roth" stackId="a" stroke="var(--c4)" fill="url(#pl-roth)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
+                  <Area dataKey="roth401k" stackId="a" stroke="var(--c7)" fill="url(#pl-r401)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
                   <Area dataKey="k401" stackId="a" stroke="var(--s-invest)" fill="url(#pl-401)" type="monotone" isAnimationActive={motionOK} animationDuration={700} />
                 </ComposedChart>
               </ResponsiveContainer>
