@@ -165,7 +165,7 @@ async function syncInvestmentTxns(token: string, days = 730) {
         if (!['cash', 'fee', 'transfer'].includes(String(t.type)) && !INV_CASH_SUBTYPES.has(subtype)) continue
         await upsertTxn({
           txn_id: `inv-${t.investment_transaction_id}`, account_id: t.account_id, date: String(t.date), name: t.name || titleWords(subtype),
-          amount: t.amount, category: titleWords(subtype), pending: 0, detailed: `INVESTMENT_${subtype.toUpperCase().replace(/ /g, '_')}`,
+          amount: subtype === 'contribution' ? -Math.abs(t.amount) : t.amount, category: titleWords(subtype), // some plans (Empower) send contributions as positive pending: 0, detailed: `INVESTMENT_${subtype.toUpperCase().replace(/ /g, '_')}`,
           raw_primary: 'INVESTMENT', source: 'plaid_inv', txn_type: subtype,
         }, tx)
       }

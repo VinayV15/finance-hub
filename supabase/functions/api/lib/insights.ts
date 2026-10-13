@@ -495,7 +495,11 @@ export async function planInputs() {
   const roth401 = accts.filter((a) => kind(a) === 'roth401k')
   const k401 = accts.filter((a) => kind(a) === '401k' || kind(a) === 'ira')
   const brokerage = accts.filter((a) => a.type === 'investment' && !roth.includes(a) && !k401.includes(a) && !roth401.includes(a))
-  let k401Bal = sum(k401.map((a) => a.balance))
+  // A plan can hold both kinds: your Roth deposits and the employer's pre-tax match. Split by where deposits went.
+  const rothShare = await analytics.planRothShare()
+  const planRoth = (a: any) => (kind(a) === 'roth401k' ? 1 : rothShare[a.account_id] ?? 0)
+  let k401Bal = sum(k401.map((a) => a.balance * (1 - planRoth(a))))
+  const roth401Bal = sum([...roth401, ...k401].map((a) => a.balance * planRoth(a)))
   let k401Est: number | null = null
   if (!k401.length && !roth401.length) { k401Est = (await analytics.investments()).retirement_estimate?.value ?? 0; k401Bal = k401Est }
   const avgCash = cash || 1
@@ -518,7 +522,7 @@ export async function planInputs() {
       roth: round(sum(roth.map((a) => a.balance)), 2),
       roth_basis: round(sum(roth.map((a) => basis[a.account_id] || a.balance)), 2),
       k401: round(k401Bal, 2), k401_estimated: k401Est != null,
-      roth401k: round(sum(roth401.map((a) => a.balance)), 2),
+      roth401k: round(roth401Bal, 2),
     },
     cash_apy: cashApy,
     avg: {
@@ -531,7 +535,7 @@ export async function planInputs() {
     // your part vs. the match: with a Roth 401(k) your part grows tax-free; the match is still pre-tax
     k401_employee_yearly: b ? round(b.per_year.retirement, 2) : 0,
     k401_match_yearly: b ? round(b.per_year.employer_match, 2) : 0,
-    k401_is_roth: roth401.length > 0 && !accts.some((a) => kind(a) === '401k'),
+    k401_is_roth: roth401.length > 0 || Object.values(rothShare).some((x) => x > 0.2),
     k401_limit: taxRows.k401.limit,
     mortgage: m ? { balance: m.balance, pi_monthly: m.note_pi, escrow_monthly: m.config.escrow_monthly || 0, payoff: m.payoff_projected,
       by_year: m.years.map((y: any) => ({ year: Number(y.year), balance: y.end_balance })) } : null,

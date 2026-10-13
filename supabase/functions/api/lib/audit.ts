@@ -1,7 +1,7 @@
 // Accuracy checks: is the 401(k) getting what your pay settings say, and is the data itself clean (duplicates,
 // unmatched transfers, stale syncs, stuck pending charges, unknown transfers, gaps).
 import { all, getMeta, scalar } from './db.ts'
-import { EMPLOYER_RE, FROM, accountKind, dataCoverage, isWorkplace, payBreakdown, payHistory, paycheckDates, settingsOn } from './analytics.ts'
+import { EMPLOYER_RE, FROM, accountKind, planDataSince, dataCoverage, isWorkplace, payBreakdown, payHistory, paycheckDates, settingsOn } from './analytics.ts'
 import { addDays, diffDays, round, sum, today } from './util.ts'
 
 
@@ -16,7 +16,8 @@ export async function retirementCheck() {
       WHERE t.account_id IN (${ids.map(() => '?').join(',')}) AND k.kind='invest_contribution' AND t.amount < 0 ORDER BY t.date`, ids)
   const first = deposits[0]?.date ?? null
   const history = await payHistory()
-  const days = first ? (await paycheckDates(addDays(first, -7))).filter((d) => d <= t0) : []
+  const since = await planDataSince()
+  const days = since ? (await paycheckDates(since)).filter((d) => d <= t0) : []
   const used = new Set<number>()
   const paydays = []
   for (const d of days) {
@@ -131,7 +132,9 @@ export async function health() {
     const off = rc.paydays.filter((p: any) => p.status === 'off' || p.status === 'missing')
     checks.push(off.length
       ? { id: '401k', level: 'warn', title: `401(k) deposits don't match your pay settings on ${off.length} payday${off.length > 1 ? 's' : ''}`, detail: rc.issues.join(' '), link: { to: '/income' } }
-      : { id: '401k', level: 'ok', title: '401(k) deposits match your pay settings', detail: `${rc.paydays.length} paydays checked since ${rc.first_deposit}.`, link: { to: '/income' } })
+      : rc.paydays.length
+        ? { id: '401k', level: 'ok', title: '401(k) deposits match your pay settings', detail: `${rc.paydays.length} paydays checked.`, link: { to: '/income' } }
+        : { id: '401k', level: 'info', title: 'Waiting for the first 401(k) deposit after linking', detail: "Earlier paydays come from your pay settings; each new payday's deposit gets checked as it arrives.", link: { to: '/income' } })
   }
 
   // 10. Uncategorized spending ("Other")

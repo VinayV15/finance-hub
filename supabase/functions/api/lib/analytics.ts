@@ -417,9 +417,21 @@ export const EMPLOYER_RE = /employer|match|company|\ber\b|safe ?harbor|profit/i
  * recent history, so paydays before this still use the paycheck estimate. Deposits land up to ~8 days after payday. */
 export async function planDataSince(): Promise<string | null> {
   if (!(await hasLinked401k())) return null
-  const first = await scalar(`SELECT MIN(t.date) FROM transactions t JOIN accounts a USING(account_id)
-      WHERE a.type='investment' AND ${isWorkplace()}`)
+  // A starting lump covers every payday up to its date; otherwise real deposits start with the first one.
+  const lump = await scalar(`SELECT MAX(t.date) FROM transactions t JOIN txn_class k USING(txn_id) JOIN accounts a USING(account_id)
+      WHERE k.kind='invest_opening' AND a.type='investment' AND ${isWorkplace()}`)
+  if (lump) return addDays(lump, 1)
+  const first = await scalar(`SELECT MIN(t.date) FROM transactions t JOIN txn_class k USING(txn_id) JOIN accounts a USING(account_id)
+      WHERE k.kind='invest_contribution' AND a.type='investment' AND ${isWorkplace()}`)
   return addDays(first || today(), -8)
+}
+
+/** Share of each workplace plan's money that is Roth (Empower labels it AFTERTAX; others say ROTH), by deposits. */
+export async function planRothShare(): Promise<Record<string, number>> {
+  const rows = await all(`SELECT t.account_id, SUM(CASE WHEN t.name ~* '(after.?tax|roth)' THEN -t.amount ELSE 0 END) AS roth, SUM(-t.amount) AS total
+      FROM transactions t JOIN txn_class k USING(txn_id) JOIN accounts a USING(account_id)
+      WHERE k.kind IN ('invest_contribution','invest_opening') AND t.amount < 0 AND a.type='investment' AND ${isWorkplace()} GROUP BY t.account_id`)
+  return Object.fromEntries(rows.filter((r) => r.total > 0).map((r) => [r.account_id, r.roth / r.total]))
 }
 
 /** Estimated 401(k) money (yours + match) per period, from paychecks and pay settings, for paydays the linked plan

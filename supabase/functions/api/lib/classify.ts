@@ -32,6 +32,7 @@ const MORTGAGE_RE = /mortgage|home loan|loancare|mr\\.? cooper/i // plus your se
 const VERIFY_RE = /acctverify|acct verify|verification|verify|micro[- ]?deposit|trial deposit|ach test/i
 const ATM_OUT_RE = /atm withdrawal|non-wf atm withdrawal/i
 const WORKPLACE = /401|403|457|thrift|profit sharing|pension|keogh/i
+const REWARD_RE = /cash reward|reward.*(redemption|credit)|cash ?back (redemption|credit)|travel eraser|redeemed miles/i
 
 type T = Record<string, any>
 type C = { flow: string; kind: string; category: string; pair_id: string | null; review: number; reason: string; locked: boolean }
@@ -81,6 +82,11 @@ function auto(t: T, own: Record<string, string[]>, servicer: RegExp): [string, s
 
   if (t.source === 'plaid_inv') {
     const st = t.txn_type || ''
+    if (t.acct_type === 'investment' && WORKPLACE.test(t.acct_subtype || '')) {
+      // Inside a 401(k): 'transfer' rows are moves between funds (they net to zero), 'contribution' rows are payroll money.
+      if (st === 'transfer') return ['ignore', 'invest_exchange', 'Investing', 0, 'moved between funds inside the plan, not new money']
+      if (st === 'contribution') return ['transfer', 'invest_contribution', 'Investing', 0, 'paycheck money into your 401(k)']
+    }
     if (['deposit', 'contribution', 'withdrawal', 'transfer', 'distribution'].includes(st)) return ['transfer', !out ? 'invest_contribution' : 'invest_withdrawal', 'Investing', 0, 'investment cash move']
     if (st.includes('dividend') || st === 'interest') return ['growth', st.replace(/ /g, '_'), 'Investment growth', 0, 'earned inside account']
     if (st.includes('fee') || st === 'tax withheld') return ['spend', 'invest_fee', 'Fees', 0, 'investment fee']
@@ -106,6 +112,7 @@ function auto(t: T, own: Record<string, string[]>, servicer: RegExp): [string, s
   if (detailed === 'LOAN_PAYMENTS_MORTGAGE_PAYMENT' || (primary === 'LOAN_PAYMENTS' && (MORTGAGE_RE.test(name) || servicer.test(name)))) return ['spend', 'mortgage', 'Housing', 0, 'mortgage payment']
   if (primary === 'LOAN_PAYMENTS' && out) return ['spend', 'loan_payment', 'Loan Payments', 0, 'loan payment']
 
+  if (!out && t.acct_type === 'credit' && REWARD_RE.test(name)) return ['income', 'card_rewards', 'Card rewards', 0, 'cash back redeemed as a statement credit']
   if (primary === 'INCOME' || (!out && PAYROLL_RE.test(name))) {
     if (detailed === 'INCOME_WAGES' || PAYROLL_RE.test(name)) return ['income', 'paycheck', 'Paycheck', 0, 'payroll deposit']
     if (detailed === 'INCOME_INTEREST_EARNED' || name.toLowerCase().includes('interest')) return ['income', 'interest', 'Interest', 0, 'interest']
@@ -234,6 +241,27 @@ function checkPaySchedule(txns: T[], cls: Map<string, C>) {
   }
 }
 
+const PAYS_PER_YEAR: Record<string, number> = { weekly: 52, biweekly: 26, semimonthly: 24, monthly: 12 }
+
+/** A plan that moved to a new provider (or was linked late) often shows the year's earlier contributions as one big
+ * deposit on its first day. Those paydays are already counted from your paychecks, so the lump isn't counted again. */
+function markPlanStartingLump(txns: any[], cls: Map<string, C>, pay: any) {
+  const perCheck = pay.gross_annual ? pay.gross_annual / (PAYS_PER_YEAR[pay.pay_frequency || 'biweekly'] ?? 26) * ((pay.retirement_pct || 0) + (pay.employer_match_pct || 0)) / 100 : 0
+  if (!perCheck) return
+  const byAcct = new Map<string, any[]>()
+  for (const t of txns) {
+    const c = cls.get(t.txn_id)!
+    if (c.locked || c.kind !== 'invest_contribution' || t.acct_type !== 'investment' || !WORKPLACE.test(t.acct_subtype || '')) continue
+    byAcct.set(t.account_id, [...(byAcct.get(t.account_id) || []), t])
+  }
+  for (const rows of byAcct.values()) {
+    const first = rows.reduce((m, t) => (t.date < m ? t.date : m), rows[0].date)
+    const day = rows.filter((t) => t.date === first)
+    if (day.reduce((s, t) => s + Math.abs(t.amount), 0) < 2.5 * perCheck) continue
+    for (const t of day) Object.assign(cls.get(t.txn_id)!, { flow: 'ignore', kind: 'invest_opening', reason: "the plan's starting balance: earlier paychecks' 401(k) money, already counted from your pay settings" })
+  }
+}
+
 export async function run_() {
   const txns = await all(`SELECT t.*, a.type AS acct_type, a.institution AS acct_inst, a.subtype AS acct_subtype
       FROM transactions t LEFT JOIN accounts a ON a.account_id = t.account_id ORDER BY t.seq`)
@@ -259,6 +287,7 @@ export async function run_() {
     }
     cls.set(t.txn_id, { flow, kind, category: cat, pair_id: null, review, reason, locked })
   }
+  markPlanStartingLump(txns, cls, (await getJson<any>('income', {})) || {})
   pairTransfers(txns, cls)
   pairVenmoFunding(txns, cls)
   checkPaySchedule(txns, cls)
