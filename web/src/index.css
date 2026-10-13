@@ -566,3 +566,49 @@ input[type='range']::-moz-range-thumb { width: 16px; height: 16px; border-radius
 .input.code { font-size: 26px; letter-spacing: 0.35em; font-variant-numeric: tabular-nums; }
 .signin-error { color: var(--bad); font-weight: 650; font-size: 14px; }
 button.nav-link { font: inherit; font-weight: 600; font-size: 14.5px; }
+
+/* ---------- credit cards ---------- */
+.card-chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); white-space: nowrap; margin: 0 6px 6px 0; }
+.mile-row { display: flex; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.caps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 8px; }
+.cap { display: flex; flex-direction: column; gap: 6px; }
+.cap-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 650; font-size: 14px; }
+.cc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; }
+.cc-grid .card + .card { margin-top: 0; }
+.cc-face { border-radius: 18px; padding: 18px; color: #fff; display: flex; flex-direction: column; gap: 6px; min-height: 150px;
+  background: linear-gradient(135deg, #2c1c42, #6a07a3); box-shadow: 0 14px 30px -18px #6a07a3; }
+.cc-venture_x .cc-face { background: linear-gradient(135deg, #1f2d4a, #2c1c42 60%, #4a2f73); }
+.cc-amex_bce .cc-face, .cc-amex_bcp .cc-face { background: linear-gradient(135deg, #0f5c8f, #1a93dc 55%, #6a07a3); }
+.cc-name { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+.cc-mask { opacity: .8; font-variant-numeric: tabular-nums; letter-spacing: .08em; font-size: 13px; }
+.cc-bal { margin-top: auto; display: flex; justify-content: space-between; align-items: baseline; }
+.cc-bal span { opacity: .8; font-size: 13px; }
+.cc-bal b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.cc-util { display: flex; flex-direction: column; gap: 4px; font-size: 12px; opacity: .9; }
+.cc-util-bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,.22); overflow: hidden; }
+.cc-util-bar span { display: block; height: 100%; background: #fff; border-radius: 999px; }
+.cc-due { margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.cc-due.soon { color: var(--warn); }
+.cc-meant { margin: 12px 0 10px; font-size: 14.5px; line-height: 1.45; }
+.cc h3 { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 0 6px; }
+.cc-list { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.5; }
+.cc-list li::marker { color: var(--good); }
+.cc-list.avoid li::marker { color: var(--bad); }
+.perks { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.perk { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 12px; cursor: pointer; font: inherit;
+  border: 1px solid var(--line); background: var(--surface-sunk); color: var(--muted); }
+.perk b { font-size: 13px; color: var(--text-2); }
+.perk span { font-size: 12px; line-height: 1.35; }
+.perk.on { border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.perk.on b { color: var(--text); }
+.cc-foot { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.cc-foot div { display: flex; flex-direction: column; gap: 2px; }
+.cc-foot span:first-child { font-size: 12px; color: var(--muted); font-weight: 600; }
+.cc-foot b { font-variant-numeric: tabular-nums; }
+
+/* ---------- data health ---------- */
+.health-banner { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 18px; border-radius: 16px; margin-bottom: 16px; font-size: 15px; }
+.health-banner.ok { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
+.health-banner.warn { background: var(--warn-bg); color: var(--warn); }
+.lv-ok .alert-ico { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+.health-items { margin-top: 6px; }

@@ -19,6 +19,50 @@ const LINES = [
   { key: 'take_home', label: 'Take-home', note: 'what lands in your bank accounts', strong: true },
 ] as const
 
+interface PlanCheck {
+  linked: boolean; first_deposit?: string | null; issues: string[]
+  plans: { account_id: string; name: string; institution: string; balance: number; kind: string }[]
+  paydays: { date: string; expected: number | null; expected_yours: number | null; expected_match: number | null; actual: number; actual_yours: number | null; actual_match: number | null; gap: number | null; status: 'ok' | 'off' | 'missing' | 'pending' | 'unknown' }[]
+  ytd: { total: number; yours: number | null; match: number | null; expected: number; split_known: boolean } | null
+}
+const STATUS: Record<string, string> = { ok: 'Matches', off: 'Off', missing: 'No deposit', pending: 'On its way', unknown: 'No settings' }
+
+/** Did each payday's 401(k) deposit match what the pay settings say (your % + match)? */
+function PlanCheckCard() {
+  const { data } = useFetch<PlanCheck>('/api/retirement_check')
+  if (!data || !data.linked) return null
+  const y = data.ytd!
+  return (
+    <div className="card section">
+      <div className="group-head"><h2>401(k) check</h2><span className="muted small">{data.plans.map((p) => `${p.institution} ${p.kind === 'roth401k' ? 'Roth 401(k)' : '401(k)'}`).join(', ')} · data since {data.first_deposit ? niceDate(data.first_deposit) : '—'}</span></div>
+      <div className="tiles" style={{ marginBottom: 12 }}>
+        <div className="tile"><div className="label">Deposited this year</div><div className="value">{money(y.total, { cents: false })}</div>
+          <div className="sub">{y.split_known ? `${money(y.yours, { cents: false })} yours + ${money(y.match, { cents: false })} match` : 'the plan doesn\'t label which part is the match'}</div></div>
+        <div className="tile"><div className="label">Your settings expect</div><div className="value">{money(y.expected, { cents: false })}</div><div className="sub">for the same paydays</div></div>
+        <div className="tile"><div className="label">Difference</div><div className={`value ${Math.abs(y.total - y.expected) > Math.max(25, y.expected * 0.03) ? 'neg' : ''}`}>{money(y.total - y.expected, { cents: false, sign: true })}</div>
+          <div className="sub">{Math.abs(y.total - y.expected) <= Math.max(25, y.expected * 0.03) ? 'on track' : 'check your 401(k) % and match above'}</div></div>
+      </div>
+      {data.issues.map((i) => <div key={i} className="alert" style={{ marginBottom: 10 }}><span>{i}</span></div>)}
+      <div className="table-wrap">
+        <table className="data">
+          <thead><tr><th>Payday</th><th className="r">Expected</th><th className="r">Deposited</th><th className="r">Gap</th><th>Status</th></tr></thead>
+          <tbody>
+            {data.paydays.slice(0, 12).map((p) => (
+              <tr key={p.date}>
+                <td>{niceDate(p.date)}</td>
+                <td className="r">{money(p.expected)}{p.expected_match ? <div className="muted small">{money(p.expected_yours)} + {money(p.expected_match)} match</div> : null}</td>
+                <td className="r">{money(p.actual)}{p.actual_match != null ? <div className="muted small">{money(p.actual_yours)} + {money(p.actual_match)} match</div> : null}</td>
+                <td className={`r ${p.status === 'off' || p.status === 'missing' ? 'neg' : ''}`}>{p.gap == null ? '—' : money(p.gap, { sign: true })}</td>
+                <td><span className={`badge ${p.status === 'off' || p.status === 'missing' ? 'warn' : ''}`}>{STATUS[p.status]}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export function Income() {
   const toast = useToast()
   const { data, reload } = useFetch<IncomeCheck>('/api/income')
@@ -115,6 +159,8 @@ export function Income() {
           )}
         </div>
       </div>
+
+      <PlanCheckCard />
 
       <div className="grid two section">
         <div className="card">

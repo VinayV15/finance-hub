@@ -1,23 +1,27 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, Suspense, lazy, useEffect, useState } from 'react'
 import { cloud, signOut, supabase } from './cloud'
 import { SignIn } from './pages/SignIn'
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { Icon } from './components/Icons'
 import { QuickSearch } from './components/Search'
 import { RangeProvider, SummaryProvider, ToastProvider, useSummary } from './hooks'
-import { Accounts } from './pages/Accounts'
-import { Budget } from './pages/Budget'
-import { Goals } from './pages/Goals'
-import { Dashboard } from './pages/Dashboard'
 import { Home } from './pages/Home'
-import { Income } from './pages/Income'
-import { Mortgage } from './pages/Mortgage'
-import { Forecast } from './pages/Forecast'
-import { Recurring } from './pages/Recurring'
-import { Taxes } from './pages/Taxes'
-import { Projection } from './pages/Projection'
-import { Recap } from './pages/Recap'
-import { Transactions } from './pages/Transactions'
+
+// Pages load on first visit, so the phone downloads only what's on screen.
+const Accounts = lazy(() => import('./pages/Accounts').then((m) => ({ default: m.Accounts })))
+const Budget = lazy(() => import('./pages/Budget').then((m) => ({ default: m.Budget })))
+const Goals = lazy(() => import('./pages/Goals').then((m) => ({ default: m.Goals })))
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
+const Income = lazy(() => import('./pages/Income').then((m) => ({ default: m.Income })))
+const Mortgage = lazy(() => import('./pages/Mortgage').then((m) => ({ default: m.Mortgage })))
+const Forecast = lazy(() => import('./pages/Forecast').then((m) => ({ default: m.Forecast })))
+const Recurring = lazy(() => import('./pages/Recurring').then((m) => ({ default: m.Recurring })))
+const Taxes = lazy(() => import('./pages/Taxes').then((m) => ({ default: m.Taxes })))
+const Projection = lazy(() => import('./pages/Projection').then((m) => ({ default: m.Projection })))
+const Recap = lazy(() => import('./pages/Recap').then((m) => ({ default: m.Recap })))
+const Transactions = lazy(() => import('./pages/Transactions').then((m) => ({ default: m.Transactions })))
+const Cards = lazy(() => import('./pages/Cards').then((m) => ({ default: m.Cards })))
+const Health = lazy(() => import('./pages/Health').then((m) => ({ default: m.Health })))
 
 const NAV = [
   { to: '/', label: 'Overview', icon: 'overview' },
@@ -31,9 +35,11 @@ const NAV = [
   { to: '/forecast', label: 'Forecast', icon: 'forecast' },
   { to: '/projection', label: 'Plan & retire', icon: 'projection' },
   { to: '/income', label: 'Income', icon: 'income', section: 'Details' },
+  { to: '/cards', label: 'Credit cards', icon: 'cards' },
   { to: '/taxes', label: 'Taxes', icon: 'taxes' },
   { to: '/mortgage', label: 'Mortgage', icon: 'mortgage' },
   { to: '/accounts', label: 'Accounts', icon: 'accounts' },
+  { to: '/health', label: 'Data health', icon: 'health' },
 ] as { to: string; label: string; icon: string; section?: string }[]
 
 // Dark by default; the choice is remembered on this device (index.html applies it before first paint).
@@ -122,6 +128,7 @@ function Shell() {
         <button className="nav-link" onClick={signOut}><span className="nav-ico"><Icon name="lock" /></span><span className="nav-label">{cloud ? 'Sign out' : 'Lock'}</span></button>
       </aside>
       <main className="main">
+        <Suspense fallback={<div className="empty">Loading…</div>}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/budget" element={<Budget />} />
@@ -138,8 +145,11 @@ function Shell() {
           <Route path="/recap" element={<Recap />} />
           <Route path="/mortgage" element={<Mortgage />} />
           <Route path="/accounts" element={<Accounts />} />
+          <Route path="/cards" element={<Cards />} />
+          <Route path="/health" element={<Health />} />
           <Route path="*" element={<Home />} />
         </Routes>
+        </Suspense>
       </main>
       <nav className="bottom-nav"><Nav bottom /></nav>
     </div>

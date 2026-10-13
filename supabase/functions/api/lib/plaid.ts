@@ -117,7 +117,7 @@ async function saveAccounts(itemId: string, institution: string | null, accounts
     const bal = a.balances || {}
     await upsertAccount({ account_id: a.account_id, item_id: itemId, source: 'plaid', institution, name: a.official_name || a.name, mask: a.mask ?? null,
       type: String(a.type), subtype: String(a.subtype || ''), balance: bal.current ?? null, available: bal.available ?? null,
-      currency: bal.iso_currency_code || 'USD', updated_at: nowIso() })
+      currency: bal.iso_currency_code || 'USD', updated_at: nowIso(), credit_limit: bal.limit ?? null })
   }
 }
 

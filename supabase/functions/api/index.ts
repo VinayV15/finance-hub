@@ -6,6 +6,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2.105.0'
 import { all, clearMetaCache, getJson, getMeta, one, run, setJson, setMeta } from './lib/db.ts'
 import { HttpError, bad, isIsoDate, num, round, today } from './lib/util.ts'
 import * as analytics from './lib/analytics.ts'
+import * as audit from './lib/audit.ts'
+import * as cards from './lib/cards.ts'
 import * as classify from './lib/classify.ts'
 import * as home from './lib/home.ts'
 import * as insights from './lib/insights.ts'
@@ -137,6 +139,12 @@ route('GET', '/networth_history', async () => await analytics.networthHistory())
 route('GET', '/investments', async (c) => { const r = rangeArgs(c.q); return await analytics.investments(r.start, r.end, r.accounts) })
 route('GET', '/merchants', async (c) => { const r = rangeArgs(c.q); return await analytics.topMerchants(r.start, r.end, r.accounts) })
 route('GET', '/coverage', async () => await analytics.dataCoverage())
+route('PUT', '/accounts/<id>/opened', async (c) => {
+  const b = (await c.body()) || {}
+  if (b.opened && !isIsoDate(b.opened)) throw bad('Enter the date the account was opened.')
+  await analytics.markOpened(c.params[0], b.opened || null)
+  return await analytics.dataCoverage()
+})
 
 // ---------- transactions ----------
 
@@ -356,6 +364,17 @@ route('POST', '/transactions/<id>/windfall', async (c) => { await planning.markW
 
 // ---------- recurring, forecast, taxes, plan, recap, alerts ----------
 
+route('GET', '/health', async () => await audit.health())
+route('GET', '/retirement_check', async () => await audit.retirementCheck())
+route('GET', '/cards', async () => await cards.overview())
+route('PUT', '/cards/settings', async (c) => {
+  const b = (await c.body()) || {}
+  const v: Record<string, unknown> = {}
+  if (b.mile_value != null) { const m = Number(b.mile_value); if (!(m > 0 && m < 5)) throw bad('Mile value is in cents, e.g. 1.0 or 1.5.'); v.mile_value = m }
+  if (b.perks_used && typeof b.perks_used === 'object') v.perks_used = b.perks_used
+  await cards.saveSettings(v)
+  return await cards.overview()
+})
 route('GET', '/recurring', async () => await insights.recurringSummary())
 route('POST', '/recurring/dismiss', async (c) => {
   const b = (await c.body()) || {}

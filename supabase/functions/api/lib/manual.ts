@@ -87,7 +87,7 @@ export async function importVenmoCsv(raw: Uint8Array) {
   return count
 }
 
-const ACCT_COLS = ['account_id', 'item_id', 'source', 'institution', 'name', 'mask', 'type', 'subtype', 'balance', 'available', 'currency', 'updated_at']
+const ACCT_COLS = ['account_id', 'item_id', 'source', 'institution', 'name', 'mask', 'type', 'subtype', 'balance', 'available', 'currency', 'updated_at', 'credit_limit']
 export async function upsertAccount(a: Record<string, any>, tx?: any) {
   await run(`INSERT INTO accounts (${ACCT_COLS.join(', ')}) VALUES (${ACCT_COLS.map(() => '?').join(', ')})
     ON CONFLICT(account_id) DO UPDATE SET ${ACCT_COLS.slice(1).map((k) => `${k}=excluded.${k}`).join(', ')}`, ACCT_COLS.map((k) => a[k] ?? null), tx)
